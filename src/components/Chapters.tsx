@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, ArrowUpRight, Bot, Braces, Cloud, Code2, Container, Layers } from "lucide-react";
 import { Beat, Lines, Stage, isCompact, scrollToChapter, useCoarse, useTick } from "@/film/react";
 import { clamp, ease } from "@/film/timeline";
-import { capabilityGroups, contact, identity, industries, languages, projects } from "@/data/portfolio";
+import { contact, identity, industries, projects } from "@/data/portfolio";
+import SkillTree from "./SkillTree";
 
 /* ================================================================== */
 /* 00 · HOME — the reference composition: giant name across the jacket */
@@ -52,6 +53,39 @@ function Wordmark({ reserve }: { reserve: number }) {
   );
 }
 
+/** Minimal skill tiles: pop in one by one with the scroll, then a light streak sweeps across them. */
+function Tiles({ small = false }: { small?: boolean }) {
+  const refs = useRef<(HTMLLIElement | null)[]>([]);
+  const last = useRef<string[]>([]);
+  useTick((t) => {
+    const p = t.progressOf("still");
+    refs.current.forEach((el, i) => {
+      if (!el) return;
+      const a = 0.44 + i * 0.035;
+      const v = ease(a, a + 0.08, p);
+      const k = v.toFixed(3);
+      if (last.current[i] === k) return;
+      last.current[i] = k;
+      el.style.opacity = k;
+      el.style.transform = `translate3d(0,${((1 - v) * 18).toFixed(1)}px,0) scale(${(0.94 + v * 0.06).toFixed(3)})`;
+    });
+  });
+  return (
+    <ul className={small ? "grid grid-cols-3 gap-2" : "grid grid-cols-6 gap-3"}>
+      {TILES.map((t, i) => (
+        <li
+          key={t.name}
+          ref={(el) => { refs.current[i] = el; }}
+          className={`tile-min shine ${small ? "!h-11 !text-[13.5px] !gap-1.5" : ""}`}
+          style={{ opacity: 0, ["--d" as string]: `${(1.2 + i * 0.12).toFixed(2)}s` }}
+        >
+          <t.icon size={17} strokeWidth={2} aria-hidden /> {t.name}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function Still() {
   const { layout } = useCoarse();
   const compact = isCompact(layout, "still");
@@ -61,7 +95,8 @@ export function Still() {
       <Wordmark reserve={stack ? 132 : compact ? 64 : 104} />
       <div className="intro-fade mt-[clamp(8px,2.4cqh,22px)] grid">
         {stack ? (
-          <Beat at={[0, 1]} style={{ gridArea: "1 / 1" }}>
+          <>
+          <Beat at={[0, 0.46]} style={{ gridArea: "1 / 1" }}>
             <p className="body !text-[14px] max-w-[34ch]">
               {identity.role[0].toUpperCase() + identity.role.slice(1)} with <strong>{identity.years}</strong> taking AI from research to production.
             </p>
@@ -74,6 +109,10 @@ export function Still() {
               </button>
             </div>
           </Beat>
+          <Beat at={[0.44, 1]} style={{ gridArea: "1 / 1" }} className="self-end" y={0}>
+            <Tiles small />
+          </Beat>
+          </>
         ) : (
           <>
             <Beat at={[0, 0.46]} style={{ gridArea: "1 / 1" }}>
@@ -86,14 +125,8 @@ export function Still() {
                 ))}
               </div>
             </Beat>
-            <Beat at={[0.44, 1]} style={{ gridArea: "1 / 1" }} className="self-end">
-              <ul className="grid grid-cols-6 gap-3">
-                {TILES.map((t) => (
-                  <li key={t.name} className="tile">
-                    <t.icon size={18} strokeWidth={2.2} aria-hidden /> {t.name}
-                  </li>
-                ))}
-              </ul>
+            <Beat at={[0.44, 1]} style={{ gridArea: "1 / 1" }} className="self-end" y={0}>
+              <Tiles />
             </Beat>
           </>
         )}
@@ -171,60 +204,13 @@ export function Intent() {
 }
 
 /* ================================================================== */
-/* 02 · CAPABILITIES — under the chin while the light rushes past      */
+/* 02 · CAPABILITIES — a skill tree that grows into the empty band     */
+/* under the chin while the light rushes past                          */
 /* ================================================================== */
-const SIG_A = 0.1;
-const SIG_W = 0.2;
 export function Signal() {
-  const { layout } = useCoarse();
-  const compact = isCompact(layout, "signal");
-  const [active, setActive] = useState(0);
-  const cur = useRef(0);
-  useTick((t) => {
-    const g = clamp(Math.floor((t.progressOf("signal") - SIG_A) / SIG_W), 0, 3);
-    if (g !== cur.current) {
-      cur.current = g;
-      setActive(g);
-    }
-  });
-  const g = capabilityGroups[active];
   return (
     <Stage id="signal">
-      <Beat at={[0.05, 1]}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {!compact && <p className="label">Capabilities</p>}
-          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Capabilities">
-            {capabilityGroups.map((c, i) => (
-              <button
-                key={c.key}
-                role="tab"
-                aria-selected={active === i}
-                data-on={active === i ? "1" : "0"}
-                onClick={() => scrollToChapter("signal", SIG_A + i * SIG_W + 0.03)}
-                className={`tile !px-4 !font-medium ${compact ? "!h-9 !text-[13px]" : "!h-10 !text-[14px]"}`}
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div key={g.key} className={`mt-[clamp(12px,5cqh,28px)] ${compact ? "" : "grid grid-cols-12 gap-10 items-start"} animate-[fadeup_.6s_var(--ease-film)_both]`}>
-          <div className={compact ? "" : "col-span-4"}>
-            <h3 className="head text-[clamp(26px,min(3.4vw,16cqh),56px)] !font-semibold">{g.name}</h3>
-            {!compact && <p className="body mt-3 max-w-[40ch]">{g.line}</p>}
-          </div>
-          <ul className={`${compact ? "mt-3 flex-nowrap overflow-x-auto [scrollbar-width:none] -mx-1 px-1" : "col-span-8 flex-wrap"} flex gap-2 content-start`}>
-            {g.items.slice(0, compact ? 8 : 12).map((s) => (
-              <li key={s} className="chip !text-[13.5px] !px-3.5 !py-2 shrink-0">{s}</li>
-            ))}
-          </ul>
-        </div>
-        {!compact && (
-          <p className="label mt-5 !text-bone-3">
-            Languages · <span className="text-bone-2">{languages.join(" · ")}</span>
-          </p>
-        )}
-      </Beat>
+      <SkillTree />
     </Stage>
   );
 }

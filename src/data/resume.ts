@@ -43,7 +43,7 @@ export const resumeData = {
       techStack: ["Golang", "AWS AppSync", "ReactJS", "PostgreSQL", "AWS Lambda", "Cognito"]
     },
     {
-      title: "Vida",
+      title: "Medical AI Lung",
       role: "Developer",
       industry: "Healthcare (AI)",
       overview: "Healthcare imaging system for management and analysis of medical imaging data utilizing robust AWS infrastructure and Docker based Lambdas.",

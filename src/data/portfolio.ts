@@ -5,7 +5,7 @@ import { resumeData } from "./resume";
  * (They are not in resume.ts, so nothing here has been invented.)
  */
 export const contact = {
-  email: "hello@example.com", // TODO: your email
+  email: "pravinblogging@gmail.com",
   availability: "Open to AI product & platform work",
   links: [
     { label: "GitHub", href: "#" }, // TODO
