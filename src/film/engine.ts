@@ -51,11 +51,14 @@ class Engine {
   private lastTick: Tick | null = null;
   coarse: Coarse = { layout: null, chapter: 0, unit: 0 };
   debug = false;
+  /** touch screens follow the finger 1:1 (native momentum already smooths it) */
+  private touch = false;
 
   start() {
     if (this.started || typeof window === "undefined") return;
     this.started = true;
     this.debug = new URLSearchParams(location.search).has("debug");
+    this.touch = matchMedia("(pointer: coarse)").matches;
     if (this.debug) (window as unknown as { __film: Engine }).__film = this;
     this.measure(true);
     this.targetY = this.y = window.scrollY;
@@ -171,8 +174,9 @@ class Engine {
     this.lastT = t;
     // idle: nothing scrolled, nothing settling → skip all per-frame work
     if (this.settle <= 0 && this.targetY === this.y) return;
-    const rm = reduceMotion();
-    const k = rm ? 1 : 1 - Math.exp(-dt / 110);
+    // Like Lenis: wheel/trackpad input is eased (wheel steps are coarse); touch is NOT —
+    // iOS/Android momentum is already smooth, and easing on top of it reads as lag.
+    const k = reduceMotion() || this.touch ? 1 : 1 - Math.exp(-dt / 90);
     const d = this.targetY - this.y;
     this.y = Math.abs(d) < 0.4 ? this.targetY : this.y + d * k;
     const moving = Math.abs(d) >= 0.4;

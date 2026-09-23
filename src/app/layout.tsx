@@ -27,6 +27,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" className={`${wordmark.variable} ${dot.variable} ${head.variable} ${sans.variable} ${mono.variable}`}>
       <head>
         <link rel="preload" as="fetch" crossOrigin="anonymous" href="/seq/lg/001.webp" media="(min-width: 820px) and (min-aspect-ratio: 21/20)" />
+        <link rel="preload" as="fetch" crossOrigin="anonymous" href="/seq/pt/001.webp" media="(max-width: 819px), (max-aspect-ratio: 21/20)" />
         <link rel="preload" as="fetch" crossOrigin="anonymous" href="/seq/pt2/001.avif" media="(max-width: 819px), (max-aspect-ratio: 21/20)" />
       </head>
       <body>{children}</body>

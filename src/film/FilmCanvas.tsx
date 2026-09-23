@@ -8,8 +8,12 @@ import { PT_W, PT_X0, portraitCropFits, type CamRect } from "./camera";
 
 /* =====================================================================
    Frame store
-   - All frames are fetched once as compressed blobs (desktop: 1080p WebP q90, ~23 MB;
-     phones: portrait crops upscaled 1.5× + sharpened, AVIF, ~20 MB).
+   - All frames are fetched once as compressed blobs (desktop: 1080p WebP, ~28 MB;
+     phones: the 1094×1080 portrait crop as WebP, ~17 MB — fast to decode).
+   - Two tiers on phones, the way scroll-scrubbed product pages do it: while the
+     finger is moving the light WebP frames scrub; the moment scrolling rests, the
+     sharp 1.5× AVIF of that one frame is fetched/decoded and swapped in. Motion hides
+     the difference, and the heavy AVIF decode never sits on the scrubbing path.
    - Only a sliding window around the playhead is decoded, into ImageBitmaps,
      with createImageBitmap (decodes OFF the main thread). drawImage on an
      ImageBitmap never triggers a synchronous decode, which was the main
@@ -29,6 +33,39 @@ type Store = {
   listeners: Set<(n: number) => void>;
 };
 const store: Store = { set: "", blobs: [], bitmaps: new Map(), pending: new Set(), fetched: 0, limit: 40, listeners: new Set() };
+
+/* phones: sharp frames, fetched + decoded on demand for the frame the film rests on */
+const hq = { set: "" as "" | "pt2", bitmaps: new Map<number, ImageBitmap>(), pending: new Set<number>(), order: [] as number[] };
+function wantHq(i: number) {
+  if (!hq.set || hq.bitmaps.has(i) || hq.pending.has(i)) return;
+  const set = hq.set;
+  hq.pending.add(i);
+  fetch(url(set, i))
+    .then((r) => (r.ok ? r.blob() : null))
+    .then((b) => (b ? createImageBitmap(b) : null))
+    .then((bm) => {
+      hq.pending.delete(i);
+      if (!bm) return;
+      if (hq.set !== set) return bm.close();
+      hq.bitmaps.set(i, bm);
+      hq.order.push(i);
+      while (hq.order.length > 4) {
+        const k = hq.order.shift()!;
+        hq.bitmaps.get(k)?.close();
+        hq.bitmaps.delete(k);
+      }
+      getEngine().poke();
+    })
+    .catch(() => hq.pending.delete(i));
+}
+function resetHq(set: "" | "pt2") {
+  if (hq.set === set) return;
+  hq.bitmaps.forEach((b) => b.close());
+  hq.bitmaps.clear();
+  hq.pending.clear();
+  hq.order = [];
+  hq.set = set;
+}
 
 export function onLoadProgress(cb: (ratio: number) => void) {
   store.listeners.add(cb);
@@ -160,7 +197,7 @@ const BG = "#04050c";
 export default function FilmCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
   const layout = useLayoutState();
-  const last = useRef({ key: "", frame: 0 });
+  const last = useRef({ key: "", frame: 0, changedAt: 0 });
   const scale = useRef(1);
 
   useEffect(() => {
@@ -182,36 +219,67 @@ export default function FilmCanvas() {
       c.width = Math.round(w * scale.current);
       c.height = Math.round(h * scale.current);
       last.current.key = "";
-      // decoded-frame budget: lg 8.3 MB, pt2 10.6 MB, pt 4.7 MB, sm 2 MB per frame
-      load(set, set === "lg" ? 26 : set === "pt2" ? 14 : set === "pt" ? 20 : 48);
+      // decoded-frame budget: lg 8.3 MB, pt 4.7 MB, sm 2 MB per frame
+      load(set, set === "lg" ? 26 : set === "pt" ? 24 : 48);
       getEngine().poke();
     };
-    if (slow) apply("sm");
-    else if (!portrait) apply("lg");
-    else canAvif().then((ok) => apply(ok ? "pt2" : "pt"));
+    if (slow) {
+      resetHq("");
+      apply("sm");
+    } else if (!portrait) {
+      resetHq("");
+      apply("lg");
+    } else {
+      apply("pt");
+      canAvif().then((ok) => {
+        resetHq(ok ? "pt2" : "");
+        getEngine().poke();
+      });
+    }
   }, [layout]);
 
   useTick((t) => {
     const c = ref.current;
     if (!c) return;
     const i = clamp(Math.round(t.frame), 0, VIDEO.count - 1);
-    prefetch(i, i - last.current.frame);
-    last.current.frame = i;
-    const [bm, at] = nearest(i);
-    if (!bm) return;
+    const L = last.current;
     const cam = t.cam;
-    const key = `${store.set}|${at}|${cam.dw.toFixed(1)}|${cam.ox.toFixed(1)}|${cam.oy.toFixed(1)}|${c.width}`;
-    if (key === last.current.key) return;
-    last.current.key = key;
+    const camKey = `${cam.dw.toFixed(1)}|${cam.ox.toFixed(1)}|${cam.oy.toFixed(1)}|${c.width}`;
+    if (i !== L.frame || t.moving) L.changedAt = t.time;
+    prefetch(i, i - L.frame);
+    L.frame = i;
+    // "resting" = the frame hasn't changed for a moment → refine to the sharp frame
+    const resting = t.time - L.changedAt > 140;
+    let bm: ImageBitmap | null = null;
+    let src = "";
+    if (resting && hq.set) {
+      wantHq(i);
+      const h = hq.bitmaps.get(i);
+      if (h) {
+        bm = h;
+        src = `hq${i}`;
+      }
+    }
+    if (!bm) {
+      const [f, at] = nearest(i);
+      if (!f) return;
+      bm = f;
+      src = `${store.set}${at}`;
+    }
+    // while scrubbing, bilinear filtering is plenty (and cheaper); at rest, the high-quality filter
+    const q = resting ? "high" : "low";
+    const key = `${src}|${q}|${camKey}`;
+    if (key === L.key) return;
+    L.key = key;
     const ctx = c.getContext("2d", { alpha: false });
     if (!ctx) return;
-    draw(ctx, bm, cam, scale.current, t.layout.vp.w, t.layout.vp.h, store.set === "pt" || store.set === "pt2");
+    draw(ctx, bm, cam, scale.current, t.layout.vp.w, t.layout.vp.h, store.set === "pt" || store.set === "pt2", q);
   });
 
   return <canvas ref={ref} className="film-canvas" aria-hidden />;
 }
 
-function draw(ctx: CanvasRenderingContext2D, img: ImageBitmap, cam: CamRect, s: number, vw: number, vh: number, crop: boolean) {
+function draw(ctx: CanvasRenderingContext2D, img: ImageBitmap, cam: CamRect, s: number, vw: number, vh: number, crop: boolean, q: ImageSmoothingQuality) {
   ctx.setTransform(s, 0, 0, s, 0, 0);
   // full-bleed: the frame covers the viewport, so it only needs a clear if it doesn't
   if (cam.ox > 0 || cam.oy > 0 || cam.ox + cam.dw < vw || cam.oy + cam.dh < vh) {
@@ -219,7 +287,7 @@ function draw(ctx: CanvasRenderingContext2D, img: ImageBitmap, cam: CamRect, s: 
     ctx.fillRect(0, 0, vw, vh);
   }
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
+  ctx.imageSmoothingQuality = q;
   if (crop) ctx.drawImage(img, cam.ox + PT_X0 * cam.dw, cam.oy, PT_W * cam.dw, cam.dh);
   else ctx.drawImage(img, cam.ox, cam.oy, cam.dw, cam.dh);
 }

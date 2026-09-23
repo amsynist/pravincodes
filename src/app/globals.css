@@ -1004,6 +1004,12 @@ html.lifted .intro-fade { animation: fadeup 1.1s var(--ease-film) 0.45s both; }
 }
 
 @keyframes card-orbit { to { --ca: 360deg; } }
+
+/* phones: keep the GPU on the film while scrolling — no animated blurs or repainting borders */
+@media (pointer: coarse) {
+  [data-guard] > .guard-inner { filter: none; }
+  .card--work::before { animation: none; --ca: 200deg; }
+}
 @keyframes ps-in { from { opacity: 0; transform: translate3d(0, 16px, 0); } to { opacity: 1; transform: none; } }
 @keyframes ps-chip { from { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.88); } to { opacity: 1; transform: none; } }
 

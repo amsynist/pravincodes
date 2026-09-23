@@ -21,7 +21,8 @@ export default function Overlay() {
     if (!layout) return;
     const c = ref.current!;
     // hairlines only need ~1.5x; a 2x full-screen canvas cleared every frame is pure fill cost
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    const touch = matchMedia("(pointer: coarse)").matches;
+    const dpr = Math.min(window.devicePixelRatio || 1, touch ? 1 : 1.5);
     c.width = Math.round(layout.vp.w * dpr);
     c.height = Math.round(layout.vp.h * dpr);
   }, [layout]);
@@ -41,10 +42,15 @@ export default function Overlay() {
     if (key === lastKey.current) return;
     lastKey.current = key;
     if (energy0 <= 0.02 && !dbg) {
-      if (drewLast.current) ctx.clearRect(0, 0, c.width, c.height);
+      if (drewLast.current) {
+        ctx.clearRect(0, 0, c.width, c.height);
+        // an empty full-screen layer still costs a blend every frame — take it out entirely
+        c.style.visibility = "hidden";
+      }
       drewLast.current = false;
       return;
     }
+    if (!drewLast.current) c.style.visibility = "";
     drewLast.current = true;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, vp.w, vp.h);
