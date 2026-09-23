@@ -388,15 +388,19 @@ body {
   }
   .loader[data-phase="solid"] .loader__seam { transform: scaleX(1); opacity: 1; transition: transform 0.7s var(--ease-film), opacity 0.2s; }
   .loader[data-phase="fly"] .loader__seam { transform: scaleX(1); opacity: 0; }
+  /* the dot word sits exactly on the screen's centre line (where the chrome word forms);
+     the bar and meta hang below it */
   .loader__center {
     position: absolute;
     inset: 0;
     display: grid;
-    place-items: center;
-    align-content: center;
-    gap: 22px;
+    grid-template-rows: 1fr auto 1fr;
+    justify-items: center;
+    padding: 0 16px;
     transition: opacity 0.5s ease;
   }
+  .loader__dots { grid-row: 2; }
+  .loader__sub { grid-row: 3; align-self: start; display: grid; justify-items: center; gap: 18px; padding-top: 22px; max-width: 100%; }
   .loader[data-phase="solid"] .loader__center,
   .loader[data-phase="fly"] .loader__center { opacity: 0; }
   .loader__dots {
@@ -416,8 +420,12 @@ body {
   .loader[data-phase="fly"] .loader__dots { opacity: 0; filter: blur(6px); }
   .loader__meta {
     display: flex;
-    gap: 18px;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px 18px;
     align-items: center;
+    max-width: 100%;
+    white-space: nowrap;
     font-family: var(--font-mono-stack);
     font-size: 11px;
     letter-spacing: 0.22em;
@@ -425,19 +433,26 @@ body {
     color: var(--bone-3);
   }
   .loader__meta b { color: var(--signal-hi); font-weight: 500; }
+  /* phones: percentage on its own line, labels under it — nothing runs off the edges */
+  @media (max-width: 560px) {
+    .loader__meta { flex-direction: column; gap: 7px; font-size: 10px; letter-spacing: 0.2em; }
+    .loader__meta b { order: -1; font-size: 11px; }
+  }
   .loader__bar { width: min(340px, 60vw); height: 1px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
   .loader__bar i { display: block; height: 100%; background: linear-gradient(90deg, #3581e2, #cfe0ff); transform-origin: 0 50%; transition: transform 0.25s linear; }
+  /* position/scale are set from JS (centred on the dot word, then flown onto the hero word) */
   .loader__fly {
     position: fixed;
     left: 50%;
     top: 50%;
     opacity: 0;
+    white-space: nowrap;
     transform: translate(-50%, -50%) scale(0.94);
     transition: opacity 0.5s ease, transform 0.7s var(--ease-film);
     will-change: transform, opacity;
   }
   .loader[data-phase="solid"] .loader__fly,
-  .loader[data-phase="fly"] .loader__fly { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .loader[data-phase="fly"] .loader__fly { opacity: 1; }
   /* one light sweep across the chrome as it forms */
   .loader__fly .wm3d__sheen { animation: none; }
   .loader[data-phase="solid"] .loader__fly .wm3d__sheen { animation: wm-sheen-once 1s var(--ease-film) 0.1s both; }

@@ -155,30 +155,70 @@ export function Loader() {
   const [chars, setChars] = useState<string[]>(() => NAME.split("").map(() => "·"));
   const [locked, setLocked] = useState(0);
   const fly = useRef<HTMLDivElement>(null);
+  const dots = useRef<HTMLParagraphElement>(null);
   const ratioRef = useRef(0);
+  const fontsRef = useRef(false);
   const READY = 14 / VIDEO.count;
 
   useEffect(() => onLoadProgress((r) => { ratioRef.current = r; setRatio(r); }), []);
+  // the hero wordmark is fitted with the real font — measuring before it arrives made the
+  // flight land where the fallback font put the name, then the name jumped
+  useEffect(() => {
+    document.fonts?.ready.then(() => (fontsRef.current = true)).catch(() => (fontsRef.current = true));
+    if (!document.fonts) fontsRef.current = true;
+  }, []);
+
+  /**
+   * Place the flying wordmark so the centre of its visible word sits at (cx, cy), at scale s.
+   * transform-origin is the word's own centre, so scaling never shifts it.
+   */
+  const place = (cx: number, cy: number, s: number) => {
+    const el = fly.current;
+    const w = el?.querySelector<HTMLElement>(".wm3d-wrap");
+    if (!el || !w) return "";
+    const ox = w.offsetLeft + w.offsetWidth / 2;
+    const oy = w.offsetTop + w.offsetHeight / 2;
+    el.style.transformOrigin = `${ox}px ${oy}px`;
+    const x = cx - innerWidth / 2 - ox + el.offsetWidth / 2;
+    const y = cy - innerHeight / 2 - oy + el.offsetHeight / 2;
+    return `translate(-50%, -50%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${s.toFixed(4)})`;
+  };
 
   // decode: unlocked letters cycle glyphs; letters lock left→right on a steady beat,
-  // never ahead of loading — but never wait forever either (8s cap)
+  // never ahead of loading (or the fonts) — but never wait forever either (8s cap)
   useEffect(() => {
     if (phase !== "decode") return;
     const t0 = performance.now();
     let lockedN = 0;
     const id = setInterval(() => {
       const elapsed = performance.now() - t0;
+      const capped = elapsed > 8000;
       const byTime = Math.floor((elapsed - 250) / 110);
       const loaded = Math.min(1, ratioRef.current / READY);
-      const byLoad = elapsed > 8000 ? NAME.length : Math.floor(NAME.length * loaded + 0.001);
-      lockedN = Math.max(lockedN, Math.min(byTime, byLoad, NAME.length));
+      const byLoad = capped ? NAME.length : Math.floor(NAME.length * loaded + 0.001);
+      // hold the last letter until the fonts are in
+      const byFont = capped || fontsRef.current ? NAME.length : NAME.length - 1;
+      lockedN = Math.max(lockedN, Math.min(byTime, byLoad, byFont, NAME.length));
       setLocked(lockedN);
       setChars(NAME.split("").map((c, i) => (i < lockedN ? c : GLYPHS[(Math.random() * GLYPHS.length) | 0])));
       if (lockedN >= NAME.length) {
         clearInterval(id);
-        // match the hero wordmark's size so the flight is (almost) a pure move
         const target = document.querySelector<HTMLElement>("[data-wordmark-target]");
-        if (target && fly.current) fly.current.style.fontSize = getComputedStyle(target).fontSize;
+        const el = fly.current;
+        const d = dots.current?.getBoundingClientRect();
+        if (target && el && d) {
+          // same font size as the hero (the flight is then a clean move), shown at the dot word's width
+          el.style.fontSize = getComputedStyle(target).fontSize;
+          const w = el.querySelector<HTMLElement>(".wm3d-wrap");
+          const s0 = w ? Math.min(1.6, Math.max(0.45, d.width / w.offsetWidth)) : 1;
+          el.dataset.s0 = String(s0);
+          el.style.transition = "none";
+          el.style.transform = place(d.left + d.width / 2, d.top + d.height / 2, s0 * 0.94);
+          void el.offsetWidth;
+          el.style.transition = "";
+          el.dataset.cx = String(d.left + d.width / 2);
+          el.dataset.cy = String(d.top + d.height / 2);
+        }
         setTimeout(() => setPhase("solid"), 120);
       }
     }, 40);
@@ -186,34 +226,33 @@ export function Loader() {
   }, [phase, READY]);
 
   useEffect(() => {
+    const el = fly.current;
     if (phase === "solid") {
+      // the chrome word forms exactly where the dot word was
+      if (el?.dataset.cx) el.style.transform = place(+el.dataset.cx, +el.dataset.cy!, +(el.dataset.s0 ?? 1));
       const t = setTimeout(() => setPhase("fly"), 650);
       return () => clearTimeout(t);
     }
     if (phase !== "fly") return;
-    const el = fly.current;
     const target = document.querySelector<HTMLElement>("[data-wordmark-target] .wm3d-wrap");
     const finish = () => {
       document.documentElement.classList.add("lifted");
       requestAnimationFrame(() => setPhase("done"));
     };
-    if (!el || !target || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const w = el?.querySelector<HTMLElement>(".wm3d-wrap");
+    if (!el || !w || !target || matchMedia("(prefers-reduced-motion: reduce)").matches) {
       const t = setTimeout(finish, 600);
       return () => clearTimeout(t);
     }
-    // one compositor-driven flight (Web Animations), in step with the screen splitting open
-    const a = el.getBoundingClientRect();
+    // one compositor-driven flight (Web Animations) onto the hero word's centre, in step with the split
     const b = target.getBoundingClientRect();
-    const dx = b.left + b.width / 2 - (a.left + a.width / 2);
-    const dy = b.top + b.height / 2 - (a.top + a.height / 2);
-    const s = b.width / Math.max(1, a.width);
-    const anim = el.animate(
-      [
-        { transform: "translate(-50%, -50%) scale(1)" },
-        { transform: `translate(calc(-50% + ${dx.toFixed(1)}px), calc(-50% + ${dy.toFixed(1)}px)) scale(${s.toFixed(4)})` },
-      ],
-      { duration: 1000, easing: "cubic-bezier(0.65, 0, 0.2, 1)", fill: "forwards" },
-    );
+    const from = el.style.transform || getComputedStyle(el).transform;
+    const to = place(b.left + b.width / 2, b.top + b.height / 2, b.width / w.offsetWidth);
+    const anim = el.animate([{ transform: from }, { transform: to }], {
+      duration: 1000,
+      easing: "cubic-bezier(0.65, 0, 0.2, 1)",
+      fill: "forwards",
+    });
     anim.onfinish = finish;
     return () => anim.cancel();
   }, [phase]);
@@ -226,17 +265,19 @@ export function Loader() {
       <div className="loader__half loader__half--bottom" />
       <div className="loader__seam" />
       <div className="loader__center">
-        <p className="loader__dots">
+        <p ref={dots} className="loader__dots">
           {chars.map((c, i) => (
             <span key={i} data-lock={i < locked ? "1" : "0"}>{c}</span>
           ))}
         </p>
-        <div className="loader__bar"><i style={{ transform: `scaleX(${Math.min(1, ratio / READY).toFixed(3)})` }} /></div>
-        <p className="loader__meta">
-          <span>AI · Full-stack engineer</span>
-          <b className="tabular-nums">{pct}%</b>
-          <span>Reel {VIDEO.count} fr</span>
-        </p>
+        <div className="loader__sub">
+          <div className="loader__bar"><i style={{ transform: `scaleX(${Math.min(1, ratio / READY).toFixed(3)})` }} /></div>
+          <p className="loader__meta">
+            <span className="loader__role">AI · Full-stack engineer</span>
+            <b className="tabular-nums">{pct}%</b>
+            <span className="loader__reel">Reel {VIDEO.count} fr</span>
+          </p>
+        </div>
       </div>
       <div ref={fly} className="loader__fly" style={{ fontSize: 160 }}>
         <Wordmark3D text={NAME} />
