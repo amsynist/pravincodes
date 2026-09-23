@@ -14,3 +14,7 @@ npm run build
 * `docs/DESIGN.md`: the video analysis and how the layout system works
 
 **Before publishing:** replace the contact placeholders in `src/data/portfolio.ts`.
+
+## Credits
+
+* Scroll progress pill (in `src/components/ScrollDock.tsx`) adapted from [Rare UI](https://rareui.com) — "Scroll Progress", © 2026 Swami Malode, MIT + Commons Clause + Attribution. The footer carries the required visible link.

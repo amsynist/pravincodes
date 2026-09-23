@@ -9,7 +9,7 @@
  *   - "band":   the full-width strip under the chin (the hero composition)
  *   - "column": the tall space beside the head, when it's wide enough
  */
-import { CHAPTERS, Chapter, ChapterId, VIDEO, clamp, faceCenterAt, lerp } from "./timeline";
+import { CHAPTERS, Chapter, ChapterId, VIDEO, camTrackAt, clamp, lerp } from "./timeline";
 
 export type Rect = { x: number; y: number; w: number; h: number };
 export type CamRect = { dw: number; dh: number; ox: number; oy: number };
@@ -19,6 +19,8 @@ export type Shape = "band" | "column";
 
 export const TOP_SAFE = 104; // nav
 export const EDGE = (vp: Viewport) => clamp(vp.w * 0.06, 20, 110);
+/** phones: height kept clear at the bottom for the scroll dock (40px buttons + 14px margin + air) */
+export const DOCK_STRIP = 66;
 
 export function modeFor(w: number, h: number): Mode {
   return w < 820 || w / h < 1.05 ? "stack" : "wide";
@@ -51,7 +53,7 @@ export function faceCam(vp: Viewport, frame: number): CamRect {
   const k = cover(vp);
   const dw = VIDEO.width * k;
   const dh = VIDEO.height * k;
-  const [fcx] = faceCenterAt(frame);
+  const fcx = camTrackAt(frame);
   // stay inside the portrait crop when it covers the screen, else inside the full frame
   const [lo, hi] = portraitCropFits(vp) ? [vp.w - (PT_X0 + PT_W) * dw, -PT_X0 * dw] : [vp.w - dw, 0];
   const ox = clamp(vp.w * 0.5 - fcx * dw, lo, hi);
@@ -105,7 +107,8 @@ export type Layout = {
 function zoneFor(vp: Viewport, ch: Chapter, cam: CamRect, camAt: (f: number) => CamRect): Zone {
   const edge = EDGE(vp);
   const stack = vp.mode === "stack";
-  const bottomPad = stack ? 20 : clamp(vp.h * 0.035, 24, 44);
+  // phones reserve a strip at the bottom for the scroll dock (arrows + progress pill)
+  const bottomPad = stack ? DOCK_STRIP : clamp(vp.h * 0.035, 24, 44);
   const chin = chinLine(ch.frames, camAt);
   // clear of the padded head box the face guard uses (18px wide, 10px stacked) plus a little air
   const bandTop = Math.min(chin + (stack ? 14 : 26), vp.h - 180);

@@ -115,7 +115,7 @@ export function Menu({ open, onClose }: { open: boolean; onClose: () => void }) 
               <button
                 onClick={() => {
                   onClose();
-                  scrollToChapter(c.id, c.id === "still" ? 0 : undefined);
+                  scrollToChapter(c.id);
                 }}
                 className="group flex w-full items-baseline justify-between border-b border-[var(--line)] py-5 text-left"
               >

@@ -147,7 +147,7 @@ export function Still() {
               <button className="btn btn--light btn--sm" onClick={() => scrollToChapter("work")}>
                 See work <ArrowRight size={16} className="arr" />
               </button>
-              <button className="btn btn--sm" onClick={() => scrollToChapter("dawn", 0.3)}>
+              <button className="btn btn--sm" onClick={() => scrollToChapter("dawn")}>
                 Let&rsquo;s talk
               </button>
             </div>
@@ -306,7 +306,7 @@ export function Work() {
     }
   });
 
-  const go = useCallback((i: number) => scrollToChapter("work", W_A + clamp(i, 0, n - 1) * w + w * 0.4), [n, w]);
+  const go = useCallback((i: number) => scrollToChapter("work", W_A + clamp(i, 0, n - 1) * w + w * 0.5), [n, w]);
   const band = shape === "band";
   const close = useCallback(() => setOpen(null), []);
   // flipping projects inside the sheet also moves the film to that card behind it
@@ -325,7 +325,7 @@ export function Work() {
         <ArrowLeft size={15} />
       </button>
       <button
-        onClick={() => (i === n - 1 ? scrollToChapter("dawn", 0.3) : go(i + 1))}
+        onClick={() => (i === n - 1 ? scrollToChapter("dawn") : go(i + 1))}
         className="btn btn--sm !h-9 !w-9 !p-0"
         aria-label={i === n - 1 ? "Contact" : "Next project"}
       >
@@ -446,7 +446,10 @@ export function Dawn() {
             ))}
           </div>
           <p className="label mt-6 !text-bone-3">
-            © 2026 {identity.first} · {contact.availability}
+            © 2026 {identity.first} · {contact.availability} · Scroll UI by{" "}
+            <a href="https://rareui.com" target="_blank" rel="noreferrer" className="link-u hover:text-white">
+              Rare UI
+            </a>
           </p>
         </Beat>
       </div>

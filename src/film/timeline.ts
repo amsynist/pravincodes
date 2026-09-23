@@ -89,6 +89,38 @@ export function headAt(f: number): [number, number, number, number] {
   return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t), lerp(a[3], b[3], t)];
 }
 
+/**
+ * Camera track for phones: the face detector's centre wobbles a few px from frame to
+ * frame (it reversed direction on ~40% of frames), which a 2–3× phone zoom turns into
+ * visible shaking. A Gaussian-smoothed track (σ ≈ 6 frames) keeps the pan following
+ * his real movement without the noise.
+ */
+const CAM_TRACK: number[] = (() => {
+  const n = VIDEO.count;
+  const raw = VIDEO.frames.map((fr) => fr.f[0] + fr.f[2] / 2);
+  const sigma = 6;
+  const r = Math.ceil(sigma * 3);
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    let s = 0, w = 0;
+    for (let k = -r; k <= r; k++) {
+      const j = Math.min(n - 1, Math.max(0, i + k)); // clamp at the ends (no drift to 0)
+      const g = Math.exp(-(k * k) / (2 * sigma * sigma));
+      s += raw[j] * g;
+      w += g;
+    }
+    out.push(s / w);
+  }
+  return out;
+})();
+
+/** Smoothed horizontal face centre (0..1), interpolated for fractional frames. */
+export function camTrackAt(f: number): number {
+  const a = clamp(Math.floor(f), 0, VIDEO.count - 1);
+  const b = clamp(Math.ceil(f), 0, VIDEO.count - 1);
+  return lerp(CAM_TRACK[a], CAM_TRACK[b], f - Math.floor(f));
+}
+
 export function faceCenterAt(f: number): [number, number] {
   const a = frameAt(Math.floor(f)).f;
   const b = frameAt(Math.ceil(f)).f;

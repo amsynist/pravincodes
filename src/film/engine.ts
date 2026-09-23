@@ -63,6 +63,7 @@ class Engine {
     this.measure(true);
     this.targetY = this.y = window.scrollY;
     window.addEventListener("scroll", this.onScroll, { passive: true });
+    for (const ev of ["wheel", "touchstart", "keydown"] as const) window.addEventListener(ev, this.cancelJump, { passive: true });
     window.addEventListener("resize", this.onResize);
     this.loop(performance.now());
   }
@@ -116,9 +117,37 @@ class Engine {
     return (this.starts[i] ?? 0) + (this.lens[i] ?? 0) * at;
   }
 
+  /**
+   * Eased jump to a chapter position. Our own animation rather than scroll-behavior:smooth:
+   * the native one is cancelled by focus changes (a tapped button being disabled/hidden
+   * mid-flight left phones stranded halfway), and older iOS ignores it. A wheel, touch or
+   * key press from the visitor takes over immediately.
+   */
+  private jump: { from: number; to: number; t0: number; dur: number } | null = null;
+  private cancelJump = () => {
+    this.jump = null;
+  };
   scrollToChapter(id: ChapterId, at = 0.18) {
-    const y = this.chapterStart(id, at);
-    window.scrollTo({ top: y, behavior: reduceMotion() ? "auto" : "smooth" });
+    const to = Math.round(this.chapterStart(id, at));
+    const from = window.scrollY;
+    if (reduceMotion() || Math.abs(to - from) < 2) {
+      window.scrollTo(0, to);
+      return;
+    }
+    const dist = Math.abs(to - from) / (this.coarse.unit * 100 || 800); // in screens
+    this.jump = { from, to, t0: performance.now(), dur: Math.min(1500, 520 + dist * 150) };
+    this.settle = 60;
+  }
+  private stepJump(t: number) {
+    const j = this.jump;
+    if (!j) return;
+    const k = Math.min(1, (t - j.t0) / j.dur);
+    const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; // easeInOutCubic
+    const y = Math.round(j.from + (j.to - j.from) * e);
+    window.scrollTo(0, y);
+    this.targetY = y;
+    this.settle = 60;
+    if (k >= 1) this.jump = null;
   }
 
   private emitCoarse() {
@@ -172,11 +201,22 @@ class Engine {
     if (!layout) return;
     const dt = Math.min(64, t - (this.lastT || t));
     this.lastT = t;
+    this.stepJump(t);
+    // touch: read the scroll position at frame time (scroll events can land after rAF
+    // in the same frame, which made the film step 0 / 2 / 0 / 2 px — a visible judder)
+    if (this.touch) {
+      const sy = window.scrollY;
+      if (sy !== this.targetY) {
+        this.targetY = sy;
+        this.settle = 60;
+      }
+    }
     // idle: nothing scrolled, nothing settling → skip all per-frame work
     if (this.settle <= 0 && this.targetY === this.y) return;
     // Like Lenis: wheel/trackpad input is eased (wheel steps are coarse); touch is NOT —
     // iOS/Android momentum is already smooth, and easing on top of it reads as lag.
-    const k = reduceMotion() || this.touch ? 1 : 1 - Math.exp(-dt / 90);
+    // (a jump is already eased — follow it 1:1 so the two easings don't stack)
+    const k = reduceMotion() || this.touch || this.jump ? 1 : 1 - Math.exp(-dt / 90);
     const d = this.targetY - this.y;
     this.y = Math.abs(d) < 0.4 ? this.targetY : this.y + d * k;
     const moving = Math.abs(d) >= 0.4;

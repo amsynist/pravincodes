@@ -7,6 +7,7 @@ import { useFilmStart } from "@/film/react";
 import { CHAPTERS } from "@/film/timeline";
 import { Loader, Menu, Scrims, TopBar } from "@/components/Chrome";
 import { Dawn, Intent, Signal, Still, Work } from "@/components/Chapters";
+import ScrollDock from "@/components/ScrollDock";
 
 export default function Home() {
   useFilmStart();
@@ -30,6 +31,7 @@ export default function Home() {
       </div>
 
       <TopBar onMenu={() => setMenu(true)} />
+      <ScrollDock />
       <Menu open={menu} onClose={close} />
       <Loader />
 

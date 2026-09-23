@@ -178,14 +178,23 @@ function prefetch(center: number, dir: number) {
   }
 }
 
-function nearest(i: number): [ImageBitmap | null, number] {
+/**
+ * Closest decoded frame, preferring frames BEHIND the direction of travel (the ones just
+ * passed are already decoded). Never steps backwards past the frame already on screen —
+ * alternating between i-1 and i+1 while decoding catches up read as shaking.
+ */
+function nearest(i: number, dir: number, shown: number): [ImageBitmap | null, number] {
   const exact = store.bitmaps.get(i);
   if (exact) return [exact, i];
+  const back = dir >= 0 ? -1 : 1;
   for (let d = 1; d < 24; d++) {
-    const a = store.bitmaps.get(i - d);
-    if (a) return [a, i - d];
-    const b = store.bitmaps.get(i + d);
-    if (b) return [b, i + d];
+    for (const j of [i + back * d, i - back * d]) {
+      const b = store.bitmaps.get(j);
+      if (!b) continue;
+      const regress = shown >= 0 && (dir > 0 ? j < shown && shown <= i : dir < 0 ? j > shown && shown >= i : false);
+      if (regress && store.bitmaps.has(shown)) return [store.bitmaps.get(shown)!, shown];
+      return [b, j];
+    }
   }
   return [null, -1];
 }
@@ -197,7 +206,7 @@ const BG = "#04050c";
 export default function FilmCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
   const layout = useLayoutState();
-  const last = useRef({ key: "", frame: 0, changedAt: 0 });
+  const last = useRef({ key: "", frame: 0, changedAt: 0, dir: 1, shown: -1 });
   const scale = useRef(1);
 
   useEffect(() => {
@@ -246,7 +255,8 @@ export default function FilmCanvas() {
     const cam = t.cam;
     const camKey = `${cam.dw.toFixed(1)}|${cam.ox.toFixed(1)}|${cam.oy.toFixed(1)}|${c.width}`;
     if (i !== L.frame || t.moving) L.changedAt = t.time;
-    prefetch(i, i - L.frame);
+    if (i !== L.frame) L.dir = i > L.frame ? 1 : -1;
+    prefetch(i, L.dir);
     L.frame = i;
     // "resting" = the frame hasn't changed for a moment → refine to the sharp frame
     const resting = t.time - L.changedAt > 140;
@@ -257,13 +267,15 @@ export default function FilmCanvas() {
       const h = hq.bitmaps.get(i);
       if (h) {
         bm = h;
+        L.shown = i;
         src = `hq${i}`;
       }
     }
     if (!bm) {
-      const [f, at] = nearest(i);
+      const [f, at] = nearest(i, L.dir, L.shown);
       if (!f) return;
       bm = f;
+      L.shown = at;
       src = `${store.set}${at}`;
     }
     // while scrubbing, bilinear filtering is plenty (and cheaper); at rest, the high-quality filter

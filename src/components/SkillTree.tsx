@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Brain, Cloud, Code2, Database, Server, Sparkles, type LucideIcon } from "lucide-react";
-import { scrollToChapter, useCoarse, useTick } from "@/film/react";
+import { scrollToChapter, useCoarse, useTick, setRestVariant } from "@/film/react";
 import { CHAPTERS, VIDEO, clamp, ease } from "@/film/timeline";
 import { EDGE, TOP_SAFE, type Layout } from "@/film/camera";
 import { capabilityGroups, languages } from "@/data/portfolio";
@@ -421,6 +421,8 @@ export default function SkillTree() {
     return planL(layout, measure);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout, fontsReady]);
+  // the arrows / menu land on the fully grown tree: tell them which variant is showing
+  useEffect(() => setRestVariant("signal", p ? "full" : "compact"), [p]);
 
   if (!layout) return null;
   if (p) return <LTree p={p} />;

@@ -229,8 +229,34 @@ export function Guard({
   );
 }
 
+/**
+ * Rest points: where each chapter is FULLY drawn (every beat revealed, nothing mid-wipe
+ * or fading out). Measured by sweeping each chapter at 7 viewports and keeping the
+ * middle of a window that is complete on all of them. Arrows, the section menu and
+ * every "go to" button land here, so no stop ever shows a half-built screen.
+ *   full    = the chapter's regular layout
+ *   compact = short bands / phones (content pages one beat at a time) or the band tree
+ */
+const REST: Record<ChapterId, { full: number; compact: number }> = {
+  still: { full: 0, compact: 0 },
+  intent: { full: 0.6, compact: 0.24 },
+  signal: { full: 0.79, compact: 0.46 },
+  work: { full: 0.124, compact: 0.124 },
+  dawn: { full: 0.4, compact: 0.4 },
+};
+const restVariant: Partial<Record<ChapterId, "full" | "compact">> = {};
+/** A chapter whose layout choice isn't the band height (the skill tree) reports it here. */
+export function setRestVariant(id: ChapterId, v: "full" | "compact") {
+  restVariant[id] = v;
+}
+export function restOf(id: ChapterId) {
+  const layout = getEngine().coarse.layout;
+  const v = restVariant[id] ?? (isCompact(layout, id) ? "compact" : "full");
+  return REST[id][v];
+}
+
 export function scrollToChapter(id: ChapterId, at?: number) {
-  getEngine().scrollToChapter(id, at);
+  getEngine().scrollToChapter(id, at ?? restOf(id));
 }
 
 export function chapterIndex(id: ChapterId) {
