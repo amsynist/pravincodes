@@ -5,6 +5,7 @@ import { CHAPTERS, VIDEO } from "@/film/timeline";
 import { Guard, chapterVis, scrollToChapter, useCoarse, useLayoutState, useTick } from "@/film/react";
 import { onLoadProgress } from "@/film/FilmCanvas";
 import { contact, identity } from "@/data/portfolio";
+import { Wordmark3D } from "./Chapters";
 
 /* ------------------------------------------------------------------ */
 /* Top bar — name + availability pill left, menu pill right            */
@@ -15,12 +16,12 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
     <header className="fixed inset-x-0 top-0 z-20 pointer-events-none">
       <div className="flex items-center justify-between px-5 pt-5 md:px-[clamp(20px,6vw,110px)] md:pt-6">
         <Guard level="face" className="pointer-events-auto">
-          <div className="flex items-center gap-3 md:gap-4">
-            <button onClick={() => scrollToChapter("still", 0)} className="head text-[20px] md:text-[24px]" aria-label="Back to top">
-              {identity.first}
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
+            <button onClick={() => scrollToChapter("still", 0)} className="brand text-[15px] sm:text-[17px] md:text-[19px]" aria-label="Back to top">
+              {identity.first.toUpperCase()}
               <sup className="text-[0.5em] font-normal ml-0.5">®</sup>
             </button>
-            <span className="pill !h-8 !px-3.5 !text-[12.5px]">
+            <span className="pill !h-7 !px-2.5 !gap-2 !text-[11.5px] sm:!h-8 sm:!px-3.5 sm:!text-[12.5px]">
               <span className="dot" /> Available
             </span>
           </div>
@@ -56,6 +57,7 @@ export function Scrims() {
         vb = Math.max(vb, v);
         by += z.y * v;
         bw += v;
+        if (c.id === "signal") vl = Math.max(vl, v * 0.85); // the skill tree also climbs the left side
       } else if (c.side === "right") vr = Math.max(vr, v);
       else vl = Math.max(vl, v);
     }
@@ -76,7 +78,6 @@ export function Scrims() {
       <div ref={r} className="scrim scrim--right" />
       <div ref={l} className="scrim scrim--left" />
       <div className="scrim scrim--vignette" />
-      <div className="grain" />
     </>
   );
 }
@@ -140,44 +141,105 @@ export function Menu({ open, onClose }: { open: boolean; onClose: () => void }) 
 }
 
 /* ------------------------------------------------------------------ */
-/* Loader — lifts once the first keyframes are decoded                 */
+/* Loader — the name decodes in dot-matrix while frames load, turns    */
+/* into the solid chrome wordmark, then flies into its hero position    */
+/* as the screen splits open along a streak of light.                   */
 /* ------------------------------------------------------------------ */
+const GLYPHS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&*+=<>/";
+const NAME = identity.first.toUpperCase();
+type Phase = "decode" | "solid" | "fly" | "done";
+
 export function Loader() {
   const [ratio, setRatio] = useState(0);
-  const [gone, setGone] = useState(false);
-  const [lift, setLift] = useState(false);
-  useEffect(() => onLoadProgress(setRatio), []);
-  const ready = ratio >= 14 / VIDEO.count;
+  const [phase, setPhase] = useState<Phase>("decode");
+  const [chars, setChars] = useState<string[]>(() => NAME.split("").map(() => "·"));
+  const [locked, setLocked] = useState(0);
+  const fly = useRef<HTMLDivElement>(null);
+  const ratioRef = useRef(0);
+  const READY = 14 / VIDEO.count;
+
+  useEffect(() => onLoadProgress((r) => { ratioRef.current = r; setRatio(r); }), []);
+
+  // decode: unlocked letters cycle glyphs; letters lock left→right on a steady beat,
+  // never ahead of loading — but never wait forever either (8s cap)
   useEffect(() => {
-    if (!ready || lift) return;
-    const t1 = setTimeout(() => {
-      setLift(true);
+    if (phase !== "decode") return;
+    const t0 = performance.now();
+    let lockedN = 0;
+    const id = setInterval(() => {
+      const elapsed = performance.now() - t0;
+      const byTime = Math.floor((elapsed - 250) / 110);
+      const loaded = Math.min(1, ratioRef.current / READY);
+      const byLoad = elapsed > 8000 ? NAME.length : Math.floor(NAME.length * loaded + 0.001);
+      lockedN = Math.max(lockedN, Math.min(byTime, byLoad, NAME.length));
+      setLocked(lockedN);
+      setChars(NAME.split("").map((c, i) => (i < lockedN ? c : GLYPHS[(Math.random() * GLYPHS.length) | 0])));
+      if (lockedN >= NAME.length) {
+        clearInterval(id);
+        // match the hero wordmark's size so the flight is (almost) a pure move
+        const target = document.querySelector<HTMLElement>("[data-wordmark-target]");
+        if (target && fly.current) fly.current.style.fontSize = getComputedStyle(target).fontSize;
+        setTimeout(() => setPhase("solid"), 120);
+      }
+    }, 40);
+    return () => clearInterval(id);
+  }, [phase, READY]);
+
+  useEffect(() => {
+    if (phase === "solid") {
+      const t = setTimeout(() => setPhase("fly"), 650);
+      return () => clearTimeout(t);
+    }
+    if (phase !== "fly") return;
+    const el = fly.current;
+    const target = document.querySelector<HTMLElement>("[data-wordmark-target] .wm3d-wrap");
+    const finish = () => {
       document.documentElement.classList.add("lifted");
-    }, 300);
-    const t2 = setTimeout(() => setGone(true), 1600);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
+      requestAnimationFrame(() => setPhase("done"));
     };
-  }, [ready, lift]);
-  if (gone) return null;
+    if (!el || !target || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const t = setTimeout(finish, 600);
+      return () => clearTimeout(t);
+    }
+    // one compositor-driven flight (Web Animations), in step with the screen splitting open
+    const a = el.getBoundingClientRect();
+    const b = target.getBoundingClientRect();
+    const dx = b.left + b.width / 2 - (a.left + a.width / 2);
+    const dy = b.top + b.height / 2 - (a.top + a.height / 2);
+    const s = b.width / Math.max(1, a.width);
+    const anim = el.animate(
+      [
+        { transform: "translate(-50%, -50%) scale(1)" },
+        { transform: `translate(calc(-50% + ${dx.toFixed(1)}px), calc(-50% + ${dy.toFixed(1)}px)) scale(${s.toFixed(4)})` },
+      ],
+      { duration: 1000, easing: "cubic-bezier(0.65, 0, 0.2, 1)", fill: "forwards" },
+    );
+    anim.onfinish = finish;
+    return () => anim.cancel();
+  }, [phase]);
+
+  if (phase === "done") return null;
+  const pct = String(Math.round(Math.min(1, ratio / READY) * 100)).padStart(3, "0");
   return (
-    <div
-      className="fixed inset-0 z-50 bg-[var(--void)] flex items-end"
-      style={{ clipPath: lift ? "inset(0 0 100% 0)" : "inset(0 0 0 0)", transition: "clip-path 1.1s var(--ease-film)" }}
-      aria-hidden
-    >
-      <div className="w-full px-6 pb-8 md:px-[clamp(20px,6vw,110px)] md:pb-12">
-        <div className="flex items-end justify-between">
-          <p className="wordmark text-[clamp(64px,14vw,220px)]">
-            {identity.first}
-            <sup>®</sup>
-          </p>
-          <p className="label tabular-nums">{String(Math.round(ratio * 100)).padStart(2, "0")}%</p>
-        </div>
-        <div className="mt-6 h-px w-full bg-white/10">
-          <div className="h-px bg-[var(--signal-hi)] transition-[width] duration-300" style={{ width: `${Math.round(ratio * 100)}%` }} />
-        </div>
+    <div className="loader" data-phase={phase} aria-hidden>
+      <div className="loader__half loader__half--top" />
+      <div className="loader__half loader__half--bottom" />
+      <div className="loader__seam" />
+      <div className="loader__center">
+        <p className="loader__dots">
+          {chars.map((c, i) => (
+            <span key={i} data-lock={i < locked ? "1" : "0"}>{c}</span>
+          ))}
+        </p>
+        <div className="loader__bar"><i style={{ transform: `scaleX(${Math.min(1, ratio / READY).toFixed(3)})` }} /></div>
+        <p className="loader__meta">
+          <span>AI · Full-stack engineer</span>
+          <b className="tabular-nums">{pct}%</b>
+          <span>Reel {VIDEO.count} fr</span>
+        </p>
+      </div>
+      <div ref={fly} className="loader__fly" style={{ fontSize: 160 }}>
+        <Wordmark3D text={NAME} />
       </div>
     </div>
   );

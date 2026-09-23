@@ -2,7 +2,10 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 
-// Self-hosted (OFL): Outfit (headings + wordmark), Geist (text), Geist Mono (small metadata)
+// Self-hosted (OFL): Anybody (wordmark, variable width), Doto (dot-matrix, loader), Outfit (headings),
+// Geist (text), Geist Mono (small metadata)
+const wordmark = localFont({ src: "./fonts/Anybody-Variable.woff2", variable: "--font-wordmark", weight: "100 900", display: "block" });
+const dot = localFont({ src: "./fonts/Doto-Variable.woff2", variable: "--font-dot", weight: "100 900", display: "block" });
 const head = localFont({ src: "./fonts/Outfit-Variable.woff2", variable: "--font-head", weight: "100 900", display: "swap" });
 const sans = localFont({ src: "./fonts/Geist-Variable.woff2", variable: "--font-sans", weight: "100 900", display: "swap" });
 const mono = localFont({ src: "./fonts/GeistMono-Variable.woff2", variable: "--font-mono", weight: "100 900", display: "swap" });
@@ -21,9 +24,10 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${head.variable} ${sans.variable} ${mono.variable}`}>
+    <html lang="en" className={`${wordmark.variable} ${dot.variable} ${head.variable} ${sans.variable} ${mono.variable}`}>
       <head>
-        <link rel="preload" as="image" href="/seq/lg/001.webp" />
+        <link rel="preload" as="fetch" crossOrigin="anonymous" href="/seq/lg/001.webp" media="(min-width: 820px) and (min-aspect-ratio: 21/20)" />
+        <link rel="preload" as="fetch" crossOrigin="anonymous" href="/seq/pt2/001.avif" media="(max-width: 819px), (max-aspect-ratio: 21/20)" />
       </head>
       <body>{children}</body>
     </html>

@@ -47,6 +47,8 @@ export type Chapter = {
   vh: number;
   /** which side of the subject the chapter's UI lives on */
   side: Side;
+  /** camera push when the frame overflows the screen: -1 subject left, 1 subject right */
+  ax?: number;
   /** min width for a side column; below it the chapter uses the under-chin band */
   target: number;
 };
@@ -62,7 +64,7 @@ export type Chapter = {
 export const CHAPTERS: Chapter[] = [
   { id: "still", index: "00", label: "Still", scene: "Home", frames: [0, 20], vh: 150, side: "band", target: 0 },
   { id: "intent", index: "01", label: "Intent", scene: "About", frames: [20, 50], vh: 200, side: "right", target: 320 },
-  { id: "signal", index: "02", label: "Signal", scene: "Capabilities", frames: [50, 100], vh: 300, side: "band", target: 0 },
+  { id: "signal", index: "02", label: "Signal", scene: "Capabilities", frames: [50, 100], vh: 300, side: "band", target: 0, ax: 1 },
   { id: "work", index: "03", label: "The Turn", scene: "Work", frames: [100, 152], vh: 560, side: "left", target: 300 },
   { id: "dawn", index: "04", label: "Dawn", scene: "Contact", frames: [152, 190], vh: 200, side: "left", target: 300 },
 ];

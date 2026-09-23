@@ -47,7 +47,7 @@ export const capabilityGroups = [
   },
 ];
 
-export const languages = ["Python", "Go", "TypeScript", "JavaScript", "Lua", "Bash", "GraphQL"];
+export const languages = ["Python", "Go", "TypeScript", "JavaScript", "Lua", "Bash", "GraphQL", "HTML5", "CSS3"];
 
 export const projects = resumeData.projects;
 

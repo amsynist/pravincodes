@@ -36,13 +36,25 @@ export function camRect(vp: Viewport, ax: number, fy = 0.4): CamRect {
   return { dw, dh, ox, oy };
 }
 
+/**
+ * Portrait frames ("pt" set) are native-resolution crops of the 1080p source
+ * covering x ∈ [PT_X0, PT_X0 + PT_W] — every position the face-tracking camera
+ * can reach on a portrait screen — so phones draw real pixels instead of an
+ * upscaled slice of a downsized frame.
+ */
+export const PT_X0 = 288 / 1920;
+export const PT_W = 1094 / 1920;
+export const portraitCropFits = (vp: Viewport) => vp.w <= PT_W * VIDEO.width * cover(vp);
+
 /** Portrait: still full-bleed, panned so the face stays centred as he moves. */
 export function faceCam(vp: Viewport, frame: number): CamRect {
   const k = cover(vp);
   const dw = VIDEO.width * k;
   const dh = VIDEO.height * k;
   const [fcx] = faceCenterAt(frame);
-  const ox = clamp(vp.w * 0.5 - fcx * dw, vp.w - dw, 0);
+  // stay inside the portrait crop when it covers the screen, else inside the full frame
+  const [lo, hi] = portraitCropFits(vp) ? [vp.w - (PT_X0 + PT_W) * dw, -PT_X0 * dw] : [vp.w - dw, 0];
+  const ox = clamp(vp.w * 0.5 - fcx * dw, lo, hi);
   return { dw, dh, ox, oy: 0 };
 }
 
@@ -95,7 +107,8 @@ function zoneFor(vp: Viewport, ch: Chapter, cam: CamRect, camAt: (f: number) => 
   const stack = vp.mode === "stack";
   const bottomPad = stack ? 20 : clamp(vp.h * 0.035, 24, 44);
   const chin = chinLine(ch.frames, camAt);
-  const bandTop = Math.min(chin + (stack ? 12 : 16), vp.h - 180);
+  // clear of the padded head box the face guard uses (18px wide, 10px stacked) plus a little air
+  const bandTop = Math.min(chin + (stack ? 14 : 26), vp.h - 180);
   const band: Zone = { shape: "band", x: edge, y: bandTop, w: vp.w - edge * 2, h: vp.h - bottomPad - bandTop };
   if (stack || ch.side === "band") return band;
   const col = columnZone(vp, cam, ch.frames, ch.side, vp.h - bottomPad);
@@ -108,7 +121,7 @@ export function computeLayout(vp: Viewport): Layout {
   const cams = {} as Layout["cams"];
   const zones = {} as Layout["zones"];
   for (const ch of CHAPTERS) {
-    const ax = ch.side === "right" ? -1 : ch.side === "left" ? 1 : 0;
+    const ax = ch.ax ?? (ch.side === "right" ? -1 : ch.side === "left" ? 1 : 0);
     const cam = vp.mode === "stack" ? faceCam(vp, ch.frames[0]) : camRect(vp, ax);
     const camAt = (f: number) => (vp.mode === "stack" ? faceCam(vp, f) : cam);
     cams[ch.id] = cam;

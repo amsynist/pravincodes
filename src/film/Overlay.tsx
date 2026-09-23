@@ -6,14 +6,6 @@ import { CHAPTERS, VIDEO, clamp, frameAt, silhouetteUnion, SIL_ROWS } from "./ti
 import { getEngine } from "./engine";
 import type { Rect } from "./camera";
 
-const LABELS = [
-  "LANGCHAIN", "GROQ", "WEAVIATE", "FASTAPI", "GOLANG", "PINECONE", "WHISPER", "DEEPGRAM",
-  "TERRAFORM", "K8S", "LORA", "VLLM", "NEXT.JS", "POSTGRES", "BIGQUERY", "STEP FUNCTIONS",
-];
-
-const overlaps = (a: Rect, b: Rect, pad = 0) =>
-  a.x < b.x + b.w + pad && a.x + a.w + pad > b.x && a.y < b.y + b.h + pad && a.y + a.h + pad > b.y;
-
 /**
  * Canvas overlay that belongs to the film:
  *  - tracer lines riding the real light streaks detected in each frame (never across the head)
@@ -22,8 +14,6 @@ const overlaps = (a: Rect, b: Rect, pad = 0) =>
 export default function Overlay() {
   const ref = useRef<HTMLCanvasElement>(null);
   const layout = useLayoutState();
-  const fontReady = useRef(false);
-  const monoRef = useRef("monospace");
   const drewLast = useRef(true);
   const lastKey = useRef("");
 
@@ -34,8 +24,6 @@ export default function Overlay() {
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     c.width = Math.round(layout.vp.w * dpr);
     c.height = Math.round(layout.vp.h * dpr);
-    monoRef.current = getComputedStyle(document.documentElement).getPropertyValue("--font-mono-stack").trim() || "monospace";
-    document.fonts?.ready.then(() => (fontReady.current = true));
   }, [layout]);
 
   useTick((t) => {
@@ -60,16 +48,11 @@ export default function Overlay() {
     drewLast.current = true;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, vp.w, vp.h);
-    const stack = vp.mode === "stack";
     const cam = t.cam;
     const head = t.head;
     const chId = CHAPTERS[t.chapter].id;
     const zone = t.layout.zones[chId];
     const uiRects: Rect[] = [zone];
-    // persistent chrome: top bar
-    const chrome: Rect[] = [{ x: 0, y: 0, w: vp.w, h: 100 }];
-    const blockers = [...uiRects, ...chrome];
-    const mono = monoRef.current;
 
     /* ---- tracers on streaks ---- */
     const energy = clamp((fr.k - 0.025) / 0.13);
@@ -108,19 +91,6 @@ export default function Overlay() {
           const px = a + len * (0.1 + 0.8 * ph);
           ctx.fillStyle = `rgba(214,232,255,${(alpha * 0.95).toFixed(3)})`;
           ctx.fillRect(px - 3, Math.round(y) - 0.5, 6, 3);
-          // label (wide mode, signal-heavy frames, only where it's clear of UI and the head)
-          if (!stack && sig > 0.2 && fontReady.current && len > 160) {
-            const label = LABELS[(Math.round(sy * 40) + si * 5) % LABELS.length];
-            ctx.font = `500 10px ${mono}`;
-            const tw = ctx.measureText(label).width + 14;
-            const lr: Rect = { x: px + 8, y: y - 16, w: tw, h: 14 };
-            if (lr.x + lr.w > vp.w - 24) lr.x = px - 8 - tw;
-            const blocked = overlaps(lr, head, 16) || blockers.some((u) => overlaps(lr, u, 12));
-            if (!blocked) {
-              ctx.fillStyle = `rgba(214,232,255,${(alpha * 0.9 * sig).toFixed(3)})`;
-              ctx.fillText("▸ " + label, lr.x, y - 6);
-            }
-          }
         });
       });
     }

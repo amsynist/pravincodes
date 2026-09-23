@@ -25,6 +25,21 @@ const COLUMNS = [
   { title: "Full Stack", text: "Go and FastAPI services to Next.js front-ends, built end to end." },
 ];
 
+/** The name as a 3D object: extruded depth, chrome face with the film's blue rim light, a travelling sheen. */
+export function Wordmark3D({ text }: { text: string }) {
+  return (
+    <span className="wm3d-wrap">
+      <span className="wm3d">
+        <span className="wm3d__depth" aria-hidden>{text}</span>
+        <span className="wm3d__face">{text}</span>
+        <span className="wm3d__sheen" aria-hidden>{text}</span>
+      </span>
+      {/* ® is kept flat and crisp, outside the extruded copies (it smeared at small sizes) */}
+      <sup className="wm3d__reg" aria-hidden>®</sup>
+    </span>
+  );
+}
+
 /** Fits the wordmark to the band: as wide as the zone allows, never taller than the space under the chin. */
 function Wordmark({ reserve }: { reserve: number }) {
   const { layout } = useCoarse();
@@ -39,16 +54,42 @@ function Wordmark({ reserve }: { reserve: number }) {
       el.style.fontSize = "100px";
       const em = el.scrollWidth / 100;
       el.style.fontSize = prev;
-      const byW = (z.w * 0.99) / em;
-      const byH = (z.h - reserve) / 0.84;
-      setSize(Math.max(48, Math.min(byW, byH, 360)));
+      const byW = (z.w * 0.97) / em;
+      const byH = (z.h - reserve) / 0.8;
+      setSize(Math.max(40, Math.min(byW, byH, 300)));
     };
     fit();
     document.fonts?.ready.then(fit);
   }, [layout, reserve]);
+  // gentle 3D tilt toward the pointer (transform only — composited, no repaint)
+  useEffect(() => {
+    const el = ref.current?.querySelector<HTMLElement>(".wm3d-wrap");
+    if (!el || matchMedia("(pointer: coarse)").matches || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let raf = 0;
+    const move = (e: PointerEvent) => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const nx = e.clientX / innerWidth - 0.5;
+        const ny = e.clientY / innerHeight - 0.5;
+        el.style.setProperty("--ry", `${(nx * 14).toFixed(2)}deg`);
+        el.style.setProperty("--rx", `${(-ny * 9).toFixed(2)}deg`);
+      });
+    };
+    window.addEventListener("pointermove", move, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", move);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
   return (
-    <h1 ref={ref} className="wordmark self-center -ml-[0.02em]" style={{ fontSize: size ?? "clamp(72px,18vw,340px)" }}>
-      <Lines lines={[<>{identity.first}<sup>®</sup></>]} at={0} />
+    <h1
+      ref={ref}
+      data-wordmark-target
+      aria-label={identity.first}
+      className="self-center"
+      style={{ fontSize: size ?? "clamp(56px,11vw,300px)" }}
+    >
+      <Wordmark3D text={identity.first.toUpperCase()} />
     </h1>
   );
 }
@@ -209,7 +250,7 @@ export function Intent() {
 /* ================================================================== */
 export function Signal() {
   return (
-    <Stage id="signal">
+    <Stage id="signal" full>
       <SkillTree />
     </Stage>
   );

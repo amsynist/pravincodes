@@ -71,15 +71,17 @@ Open `/?debug` to see:
 
 ## 5. Assets
 
-* `public/seq/lg/*.webp`: 1600×900, quality 72. 9.2 MB total.
-* `public/seq/sm/*.webp`: 960×540, quality 70. 4.4 MB total. Used on small screens and slow connections (Save-Data, 2G/3G).
-* The original 1080p PNGs (about 310 MB) are not needed at runtime.
+* `public/seq/lg/*.webp`: full 1920×1080 frames at quality 90, about 23 MB. Used on desktop.
+* `public/seq/pt/*.webp`: native-resolution portrait crops (1094×1080, source x 288–1382) at quality 88, about 17 MB. Used on phones. The crop covers every position the face-tracking camera can reach, so phones draw real pixels rather than an upscaled slice.
+* `public/seq/sm/*.webp`: 960×540 frames for slow connections (Save-Data, 2G/3G).
+* The canvas renders at the frames' own pixel density, capped at the device's. Decoding happens off the main thread through `createImageBitmap`, in a sliding window around the playhead.
 
-To regenerate the WebP sets:
+To regenerate from the original PNGs in `assets-source/`:
 
 ```bash
-ffmpeg -i frame_%03d.png -vf scale=1600:900:flags=lanczos -c:v libwebp -quality 72 -start_number 1 public/seq/lg/%03d.webp
-ffmpeg -i frame_%03d.png -vf scale=960:540:flags=lanczos  -c:v libwebp -quality 70 -start_number 1 public/seq/sm/%03d.webp
+ffmpeg -i frame_%03d.png -c:v libwebp -quality 90 -compression_level 4 -preset photo -start_number 1 public/seq/lg/%03d.webp
+ffmpeg -i frame_%03d.png -vf crop=1094:1080:288:0 -c:v libwebp -quality 88 -compression_level 4 -preset photo -start_number 1 public/seq/pt/%03d.webp
+ffmpeg -i frame_%03d.png -vf scale=960:540:flags=lanczos -c:v libwebp -quality 70 -start_number 1 public/seq/sm/%03d.webp
 ```
 
 **Fonts** are self-hosted in `src/app/fonts`, all under the OFL licence: Outfit (wordmark and headings), Geist (text) and Geist Mono (tracer labels).

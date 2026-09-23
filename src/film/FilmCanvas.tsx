@@ -4,11 +4,12 @@ import { useEffect, useRef } from "react";
 import { useLayoutState, useTick } from "./react";
 import { getEngine } from "./engine";
 import { VIDEO, clamp } from "./timeline";
-import type { CamRect } from "./camera";
+import { PT_W, PT_X0, portraitCropFits, type CamRect } from "./camera";
 
 /* =====================================================================
    Frame store
-   - All frames are fetched once as compressed WebP blobs (~9 MB total).
+   - All frames are fetched once as compressed blobs (desktop: 1080p WebP q90, ~23 MB;
+     phones: portrait crops upscaled 1.5× + sharpened, AVIF, ~20 MB).
    - Only a sliding window around the playhead is decoded, into ImageBitmaps,
      with createImageBitmap (decodes OFF the main thread). drawImage on an
      ImageBitmap never triggers a synchronous decode, which was the main
@@ -17,8 +18,9 @@ import type { CamRect } from "./camera";
      playhead are closed to keep memory bounded.
    ===================================================================== */
 
+type SetName = "lg" | "pt" | "pt2" | "sm";
 type Store = {
-  set: "" | "lg" | "sm";
+  set: "" | SetName;
   blobs: (Blob | null)[];
   bitmaps: Map<number, ImageBitmap>;
   pending: Set<number>;
@@ -49,9 +51,29 @@ function order(n: number) {
   return out;
 }
 
-const url = (set: string, i: number) => `/seq/${set}/${String(i + 1).padStart(3, "0")}.webp`;
+const url = (set: string, i: number) => `/seq/${set}/${String(i + 1).padStart(3, "0")}.${set === "pt2" ? "avif" : "webp"}`;
 
-function load(set: "lg" | "sm", limit: number) {
+/* Phones: "pt2" = the portrait crop upscaled 1.5× (Lanczos + light sharpen) as AVIF, so a
+   3× retina screen isn't magnifying a 1080-px frame ~2×. Falls back to the WebP crop ("pt")
+   where AVIF can't be decoded. */
+const AVIF_1PX =
+  "AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaWYxbWlhZk1BMUIAAADrbWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAcGljdAAAAAAAAAAAAAAAAAAAAAAOcGl0bQAAAAAAAQAAAB5pbG9jAAAAAEQAAAEAAQAAAAEAAAETAAAAJAAAAChpaW5mAAAAAAABAAAAGmluZmUCAAAAAAEAAGF2MDFDb2xvcgAAAABqaXBycAAAAEtpcGNvAAAAFGlzcGUAAAAAAAAAAgAAAAIAAAAQcGl4aQAAAAADCAgIAAAADGF2MUOBAAwAAAAAE2NvbHJuY2x4AAEADQAGgAAAABdpcG1hAAAAAAAAAAEAAQQBAoMEAAAALG1kYXQSAAoIGAA2iAhoNCAyFhlHh4Yhh5555oAAAJBAyRxhQmK+L0A=";
+let avifOk: Promise<boolean> | null = null;
+function canAvif() {
+  avifOk ??= (async () => {
+    try {
+      const bytes = Uint8Array.from(atob(AVIF_1PX), (c) => c.charCodeAt(0));
+      const bm = await createImageBitmap(new Blob([bytes], { type: "image/avif" }));
+      bm.close();
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  return avifOk;
+}
+
+function load(set: SetName, limit: number) {
   store.limit = limit;
   if (store.set === set) return;
   store.bitmaps.forEach((b) => b.close());
@@ -104,7 +126,8 @@ function decode(i: number) {
 function prefetch(center: number, dir: number) {
   decode(center);
   const ahead = dir >= 0 ? 1 : -1;
-  for (let d = 1; d <= 14 && store.pending.size < 4; d++) {
+  const reach = Math.min(14, store.limit - 5); // never prefetch more than the budget can keep
+  for (let d = 1; d <= reach && store.pending.size < 4; d++) {
     decode(center + ahead * d);
     if (d <= 4) decode(center - ahead * d);
   }
@@ -144,21 +167,28 @@ export default function FilmCanvas() {
     if (!layout) return;
     const c = ref.current!;
     const { w, h } = layout.vp;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const drawnCss = Math.max(w, (h * 16) / 9); // film is always full-bleed
+    // Backing store at the screen's real pixel density (phones up to 3×), so the frame is
+    // resampled ONCE by the canvas' high-quality filter instead of a second bilinear stretch
+    // by the compositor — that second stretch is what made the film look softer than the mp4.
+    const maxPx = 8.4e6; // ~2880×2900 — keeps big 4K monitors from allocating absurd canvases
+    const dpr = Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(maxPx / (w * h)));
     const conn = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
     const slow = conn?.saveData || /(^|-)2g|3g/.test(conn?.effectiveType ?? "");
-    const set = !slow && drawnCss * dpr > 1250 ? "lg" : "sm";
-    const srcW = set === "lg" ? 1600 : 960;
-    // The backing store never exceeds the source's own resolution: a 1600px frame on a
-    // retina laptop is drawn at 1x and upscaled by the compositor (same result,
-    // about 4x less fill work per frame than a 2x canvas).
-    scale.current = clamp(srcW / drawnCss, 1, dpr);
-    c.width = Math.round(w * scale.current);
-    c.height = Math.round(h * scale.current);
-    last.current.key = "";
-    const touch = matchMedia("(pointer: coarse)").matches;
-    load(set, set === "lg" ? (touch ? 18 : 36) : 48);
+    // lg: full 1920×1080 frames · pt2/pt: portrait crops for phones · sm: 960px for slow connections
+    const portrait = layout.vp.mode === "stack" && portraitCropFits(layout.vp);
+    const apply = (set: SetName) => {
+      // slow connections keep the light path; everything else draws at device resolution
+      scale.current = set === "sm" ? 1 : Math.max(1, dpr);
+      c.width = Math.round(w * scale.current);
+      c.height = Math.round(h * scale.current);
+      last.current.key = "";
+      // decoded-frame budget: lg 8.3 MB, pt2 10.6 MB, pt 4.7 MB, sm 2 MB per frame
+      load(set, set === "lg" ? 26 : set === "pt2" ? 14 : set === "pt" ? 20 : 48);
+      getEngine().poke();
+    };
+    if (slow) apply("sm");
+    else if (!portrait) apply("lg");
+    else canAvif().then((ok) => apply(ok ? "pt2" : "pt"));
   }, [layout]);
 
   useTick((t) => {
@@ -175,13 +205,13 @@ export default function FilmCanvas() {
     last.current.key = key;
     const ctx = c.getContext("2d", { alpha: false });
     if (!ctx) return;
-    draw(ctx, bm, cam, scale.current, t.layout.vp.w, t.layout.vp.h);
+    draw(ctx, bm, cam, scale.current, t.layout.vp.w, t.layout.vp.h, store.set === "pt" || store.set === "pt2");
   });
 
   return <canvas ref={ref} className="film-canvas" aria-hidden />;
 }
 
-function draw(ctx: CanvasRenderingContext2D, img: ImageBitmap, cam: CamRect, s: number, vw: number, vh: number) {
+function draw(ctx: CanvasRenderingContext2D, img: ImageBitmap, cam: CamRect, s: number, vw: number, vh: number, crop: boolean) {
   ctx.setTransform(s, 0, 0, s, 0, 0);
   // full-bleed: the frame covers the viewport, so it only needs a clear if it doesn't
   if (cam.ox > 0 || cam.oy > 0 || cam.ox + cam.dw < vw || cam.oy + cam.dh < vh) {
@@ -189,6 +219,7 @@ function draw(ctx: CanvasRenderingContext2D, img: ImageBitmap, cam: CamRect, s: 
     ctx.fillRect(0, 0, vw, vh);
   }
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "medium";
-  ctx.drawImage(img, cam.ox, cam.oy, cam.dw, cam.dh);
+  ctx.imageSmoothingQuality = "high";
+  if (crop) ctx.drawImage(img, cam.ox + PT_X0 * cam.dw, cam.oy, PT_W * cam.dw, cam.dh);
+  else ctx.drawImage(img, cam.ox, cam.oy, cam.dw, cam.dh);
 }

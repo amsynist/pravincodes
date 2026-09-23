@@ -69,11 +69,14 @@ export function Stage({
   children,
   className = "",
   align = "end",
+  full = false,
 }: {
   id: ChapterId;
   children: ReactNode | ((shape: "band" | "column", stack: boolean) => ReactNode);
   className?: string;
   align?: "start" | "center" | "end";
+  /** cover the whole viewport; the child positions itself around the subject (skill tree) */
+  full?: boolean;
 }) {
   const layout = useLayoutState();
   const ref = useRef<HTMLDivElement>(null);
@@ -101,7 +104,7 @@ export function Stage({
   const stack = layout?.vp.mode === "stack";
   const shape = z?.shape ?? "band";
   const style: CSSProperties = {
-    ...(z ? { left: z.x, top: z.y, width: z.w, height: z.h } : { left: 0, top: 0, width: "100%", height: "100%" }),
+    ...(z && !full ? { left: z.x, top: z.y, width: z.w, height: z.h } : { left: 0, top: 0, width: "100%", height: "100%" }),
     justifyContent: shape === "band" ? "flex-end" : align === "start" ? "flex-start" : align === "center" ? "center" : "flex-end",
   };
   return (
@@ -110,7 +113,7 @@ export function Stage({
         ref={ref}
         data-stage={id}
         data-shape={shape}
-        className={`stage stage--${shape} ${stack ? "stage--stack" : ""} ${className}`}
+        className={`stage stage--${full ? "full" : shape} ${stack ? "stage--stack" : ""} ${className}`}
         style={{ ...style, opacity: 0, visibility: "hidden" }}
       >
         {typeof children === "function" ? children(shape, !!stack) : children}
