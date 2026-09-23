@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# raw frame sources (runtime uses public/seq/*.webp)
+/*_frames.zip
+/assets-source/
+/docs/video-analysis/*.tar
+/docs/video-analysis/*.mp4

@@ -1,0 +1,398 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Bot, Braces, Cloud, Code2, Container, Layers } from "lucide-react";
+import { Beat, Lines, Stage, isCompact, scrollToChapter, useCoarse, useTick } from "@/film/react";
+import { clamp, ease } from "@/film/timeline";
+import { capabilityGroups, contact, identity, industries, languages, projects } from "@/data/portfolio";
+
+/* ================================================================== */
+/* 00 · HOME — the reference composition: giant name across the jacket */
+/* under the chin, three ticked columns, then the tile row.            */
+/* ================================================================== */
+const TILES = [
+  { name: "Python", icon: Code2 },
+  { name: "Golang", icon: Braces },
+  { name: "LangChain", icon: Bot },
+  { name: "Next.js", icon: Layers },
+  { name: "Docker", icon: Container },
+  { name: "AWS", icon: Cloud },
+];
+const COLUMNS = [
+  { title: "©2026", text: "Building AI products that listen, reason and ship to production." },
+  { title: "AI / ML", text: "LLM agents, RAG pipelines, voice systems and model integrations." },
+  { title: "Full Stack", text: "Go and FastAPI services to Next.js front-ends, built end to end." },
+];
+
+/** Fits the wordmark to the band: as wide as the zone allows, never taller than the space under the chin. */
+function Wordmark({ reserve }: { reserve: number }) {
+  const { layout } = useCoarse();
+  const ref = useRef<HTMLHeadingElement>(null);
+  const [size, setSize] = useState<number | null>(null);
+  useEffect(() => {
+    if (!layout || !ref.current) return;
+    const el = ref.current;
+    const fit = () => {
+      const z = layout.zones.still;
+      const prev = el.style.fontSize;
+      el.style.fontSize = "100px";
+      const em = el.scrollWidth / 100;
+      el.style.fontSize = prev;
+      const byW = (z.w * 0.99) / em;
+      const byH = (z.h - reserve) / 0.84;
+      setSize(Math.max(48, Math.min(byW, byH, 360)));
+    };
+    fit();
+    document.fonts?.ready.then(fit);
+  }, [layout, reserve]);
+  return (
+    <h1 ref={ref} className="wordmark self-center -ml-[0.02em]" style={{ fontSize: size ?? "clamp(72px,18vw,340px)" }}>
+      <Lines lines={[<>{identity.first}<sup>®</sup></>]} at={0} />
+    </h1>
+  );
+}
+
+export function Still() {
+  const { layout } = useCoarse();
+  const compact = isCompact(layout, "still");
+  const stack = layout?.vp.mode === "stack";
+  return (
+    <Stage id="still" className="intro">
+      <Wordmark reserve={stack ? 132 : compact ? 64 : 104} />
+      <div className="intro-fade mt-[clamp(8px,2.4cqh,22px)] grid">
+        {stack ? (
+          <Beat at={[0, 1]} style={{ gridArea: "1 / 1" }}>
+            <p className="body !text-[14px] max-w-[34ch]">
+              {identity.role[0].toUpperCase() + identity.role.slice(1)} with <strong>{identity.years}</strong> taking AI from research to production.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button className="btn btn--light btn--sm" onClick={() => scrollToChapter("work")}>
+                See work <ArrowRight size={16} className="arr" />
+              </button>
+              <button className="btn btn--sm" onClick={() => scrollToChapter("dawn", 0.3)}>
+                Let&rsquo;s talk
+              </button>
+            </div>
+          </Beat>
+        ) : (
+          <>
+            <Beat at={[0, 0.46]} style={{ gridArea: "1 / 1" }}>
+              <div className="grid grid-cols-3 gap-[clamp(24px,5vw,96px)]">
+                {COLUMNS.map((c) => (
+                  <div key={c.title} className="tick">
+                    <h3 className="head text-[clamp(20px,2vw,32px)] !font-semibold">{c.title}</h3>
+                    {!compact && <p className="body mt-1.5 !text-[clamp(13px,1vw,15px)] !leading-[1.45] max-w-[40ch] line-clamp-2">{c.text}</p>}
+                  </div>
+                ))}
+              </div>
+            </Beat>
+            <Beat at={[0.44, 1]} style={{ gridArea: "1 / 1" }} className="self-end">
+              <ul className="grid grid-cols-6 gap-3">
+                {TILES.map((t) => (
+                  <li key={t.name} className="tile">
+                    <t.icon size={18} strokeWidth={2.2} aria-hidden /> {t.name}
+                  </li>
+                ))}
+              </ul>
+            </Beat>
+          </>
+        )}
+      </div>
+    </Stage>
+  );
+}
+
+/* ================================================================== */
+/* 01 · ABOUT — beside him (right) when there's room, else under chin  */
+/* ================================================================== */
+export function Intent() {
+  const { layout } = useCoarse();
+  const shape = layout?.zones.intent.shape ?? "column";
+  const compact = isCompact(layout, "intent");
+  const stats = [
+    [identity.years.replace(" Years", ""), "Years building"],
+    [String(projects.length).padStart(2, "0"), "Products shipped"],
+    [String(industries.length).padStart(2, "0"), "Industries"],
+  ];
+  const statement = ["Five years between", "a model and the moment", "someone uses it."];
+  const body = (
+    <p className="body">
+      I design and build AI products end to end: <strong>real-time voice agents</strong>, <strong>LLM pipelines</strong> that know where to
+      look, and the <strong>serverless infrastructure</strong> that keeps them fast. Research in, production out.
+    </p>
+  );
+  const Stats = (
+    <dl className="grid grid-cols-3 gap-5">
+      {stats.map(([n, l]) => (
+        <div key={l} className="tick">
+          <dd className="head text-[clamp(28px,3vw,44px)] !font-semibold">{n}</dd>
+          <dt className="label mt-1.5">{l}</dt>
+        </div>
+      ))}
+    </dl>
+  );
+
+  if (shape === "column")
+    return (
+      <Stage id="intent" align="center">
+        <Beat at={[0.06, 1]}>
+          <p className="label">About</p>
+          <h2 className="head mt-4 text-[clamp(30px,11cqi,54px)]">
+            <Lines at={0.1} lines={statement} />
+          </h2>
+        </Beat>
+        <Beat at={[0.22, 1]} className="mt-6">{body}</Beat>
+        <Beat at={[0.32, 1]} className="mt-8">{Stats}</Beat>
+      </Stage>
+    );
+
+  return (
+    <Stage id="intent">
+      <div className="grid">
+        <Beat at={[0.06, 1]} atStack={[0.06, 0.42]} style={{ gridArea: "1 / 1" }} className={compact ? "" : "grid grid-cols-12 gap-10 items-end"}>
+          <div className={compact ? "" : "col-span-5"}>
+            <p className="label">About</p>
+            <h2 className="head mt-3 text-[clamp(22px,min(3.2vw,13cqh),48px)]">
+              <Lines at={0.1} lines={compact ? ["Five years between a model", "and the moment someone uses it."] : statement} />
+            </h2>
+          </div>
+          {!compact && <div className="col-span-4">{body}</div>}
+          {!compact && <div className="col-span-3">{Stats}</div>}
+        </Beat>
+        {compact && (
+          <>
+            <Beat at={[2, 2]} atStack={[0.42, 0.72]} style={{ gridArea: "1 / 1" }}>{body}</Beat>
+            <Beat at={[2, 2]} atStack={[0.72, 1]} style={{ gridArea: "1 / 1" }}>{Stats}</Beat>
+          </>
+        )}
+      </div>
+    </Stage>
+  );
+}
+
+/* ================================================================== */
+/* 02 · CAPABILITIES — under the chin while the light rushes past      */
+/* ================================================================== */
+const SIG_A = 0.1;
+const SIG_W = 0.2;
+export function Signal() {
+  const { layout } = useCoarse();
+  const compact = isCompact(layout, "signal");
+  const [active, setActive] = useState(0);
+  const cur = useRef(0);
+  useTick((t) => {
+    const g = clamp(Math.floor((t.progressOf("signal") - SIG_A) / SIG_W), 0, 3);
+    if (g !== cur.current) {
+      cur.current = g;
+      setActive(g);
+    }
+  });
+  const g = capabilityGroups[active];
+  return (
+    <Stage id="signal">
+      <Beat at={[0.05, 1]}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {!compact && <p className="label">Capabilities</p>}
+          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Capabilities">
+            {capabilityGroups.map((c, i) => (
+              <button
+                key={c.key}
+                role="tab"
+                aria-selected={active === i}
+                data-on={active === i ? "1" : "0"}
+                onClick={() => scrollToChapter("signal", SIG_A + i * SIG_W + 0.03)}
+                className={`tile !px-4 !font-medium ${compact ? "!h-9 !text-[13px]" : "!h-10 !text-[14px]"}`}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div key={g.key} className={`mt-[clamp(12px,5cqh,28px)] ${compact ? "" : "grid grid-cols-12 gap-10 items-start"} animate-[fadeup_.6s_var(--ease-film)_both]`}>
+          <div className={compact ? "" : "col-span-4"}>
+            <h3 className="head text-[clamp(26px,min(3.4vw,16cqh),56px)] !font-semibold">{g.name}</h3>
+            {!compact && <p className="body mt-3 max-w-[40ch]">{g.line}</p>}
+          </div>
+          <ul className={`${compact ? "mt-3 flex-nowrap overflow-x-auto [scrollbar-width:none] -mx-1 px-1" : "col-span-8 flex-wrap"} flex gap-2 content-start`}>
+            {g.items.slice(0, compact ? 8 : 12).map((s) => (
+              <li key={s} className="chip !text-[13.5px] !px-3.5 !py-2 shrink-0">{s}</li>
+            ))}
+          </ul>
+        </div>
+        {!compact && (
+          <p className="label mt-5 !text-bone-3">
+            Languages · <span className="text-bone-2">{languages.join(" · ")}</span>
+          </p>
+        )}
+      </Beat>
+    </Stage>
+  );
+}
+
+/* ================================================================== */
+/* 03 · WORK — he turns away; the projects take the left side          */
+/* ================================================================== */
+const W_A = 0.06;
+const W_SPAN = 0.9;
+export function Work() {
+  const { layout } = useCoarse();
+  const shape = layout?.zones.work.shape ?? "column";
+  const compact = isCompact(layout, "work");
+  const n = projects.length;
+  const w = W_SPAN / n;
+  const cards = useRef<(HTMLElement | null)[]>([]);
+  const prog = useRef<(HTMLDivElement | null)[]>([]);
+  const counter = useRef<HTMLSpanElement>(null);
+  const cur = useRef(-1);
+
+  useTick((t) => {
+    const p = t.progressOf("work");
+    const k = clamp(Math.floor((p - W_A) / w), 0, n - 1);
+    cards.current.forEach((el, i) => {
+      if (!el) return;
+      const a = W_A + i * w;
+      // exit first (fade + drift left), then the next card wipes in left→right like a light streak
+      const fin = i === 0 ? ease(0.02, W_A + 0.02, p) : ease(a + 0.004, a + w * 0.3, p);
+      const fout = i === n - 1 ? 0 : ease(a + w - 0.022, a + w - 0.002, p);
+      const vis = fin * (1 - fout);
+      el.style.opacity = (Math.min(1, fin * 3) * (1 - fout)).toFixed(3);
+      el.style.clipPath = `inset(0 ${((1 - fin) * 100).toFixed(2)}% 0 0 round 24px)`;
+      el.style.transform = `translate3d(${(-fout * 28).toFixed(1)}px,0,0)`;
+      el.style.visibility = vis <= 0.001 ? "hidden" : "visible";
+      el.style.pointerEvents = vis > 0.6 ? "" : "none";
+      const pr = prog.current[i];
+      if (pr) pr.style.transform = `scaleX(${clamp((p - a) / w).toFixed(3)})`;
+    });
+    if (k !== cur.current) {
+      cur.current = k;
+      if (counter.current) counter.current.textContent = String(k + 1).padStart(2, "0");
+    }
+  });
+
+  const go = (i: number) => scrollToChapter("work", W_A + clamp(i, 0, n - 1) * w + w * 0.4);
+  const band = shape === "band";
+
+  const Controls = ({ i }: { i: number }) => (
+    <div className="flex items-center gap-2 shrink-0">
+      <button onClick={() => go(i - 1)} disabled={i === 0} className="btn btn--sm !h-9 !w-9 !p-0 disabled:opacity-30" aria-label="Previous project">
+        <ArrowLeft size={15} />
+      </button>
+      <button
+        onClick={() => (i === n - 1 ? scrollToChapter("dawn", 0.3) : go(i + 1))}
+        className="btn btn--sm !h-9 !w-9 !p-0"
+        aria-label={i === n - 1 ? "Contact" : "Next project"}
+      >
+        <ArrowRight size={15} />
+      </button>
+    </div>
+  );
+  const Progress = ({ i }: { i: number }) => (
+    <div className="relative h-[2px] flex-1 rounded bg-white/10 overflow-hidden">
+      <div ref={(el) => { prog.current[i] = el; }} className="absolute inset-0 origin-left bg-[var(--signal-hi)]" style={{ transform: "scaleX(0)" }} />
+    </div>
+  );
+
+  return (
+    <Stage id="work" align="center">
+      {!compact && (
+        <Beat at={[0.02, 1]} className="flex items-end justify-between gap-4 mb-4">
+          <p className="label">Selected work</p>
+          <p className="head text-[15px] text-bone-2 tabular-nums">
+            <span ref={counter} className="text-white">01</span> / {String(n).padStart(2, "0")}
+          </p>
+        </Beat>
+      )}
+      <div className="grid">
+        {projects.map((pj, i) => (
+          <article
+            key={pj.title}
+            ref={(el) => { cards.current[i] = el; }}
+            className={`card ${compact ? "p-4" : band ? "grid grid-cols-12 gap-8 items-start p-6" : "p-5 md:p-7"}`}
+            style={{ gridArea: "1 / 1", opacity: 0, visibility: "hidden" }}
+            aria-label={pj.title}
+          >
+            {compact ? (
+              /* short bands / phones: title, two lines, controls — nothing taller than the band */
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="label !text-signal-hi truncate">
+                    {String(i + 1).padStart(2, "0")}/{String(n).padStart(2, "0")} · {pj.industry.split(" / ")[0]}
+                  </p>
+                  <Controls i={i} />
+                </div>
+                <h3 className="head mt-1 text-[clamp(22px,14cqh,34px)] !font-semibold">{pj.title}</h3>
+                <p className="body mt-1.5 !text-[13.5px] !leading-[1.45] line-clamp-2">{pj.overview}</p>
+                <div className="mt-3 flex items-center gap-3">
+                  <Progress i={i} />
+                  <span className="label !text-bone-3 truncate max-w-[55%]">{pj.techStack.slice(0, 3).join(" · ")}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={band ? "col-span-4" : ""}>
+                  <p className="tick label !text-signal-hi">{pj.industry.split(" / ")[0]}</p>
+                  <h3 className="head mt-3 text-[clamp(28px,3vw,46px)] !font-semibold">{pj.title}</h3>
+                  {!band && <p className="label mt-1 !text-bone-3">{pj.role}</p>}
+                </div>
+                <p className={`body ${band ? "col-span-4 !mt-0" : "mt-4"}`}>{pj.overview}</p>
+                <div className={band ? "col-span-4" : "mt-5"}>
+                  <ul className="flex flex-wrap gap-1.5">
+                    {pj.techStack.slice(0, 8).map((s) => (
+                      <li key={s} className="chip">{s}</li>
+                    ))}
+                  </ul>
+                  <div className="mt-5 flex items-center gap-3">
+                    <Progress i={i} />
+                    <Controls i={i} />
+                  </div>
+                </div>
+              </>
+            )}
+          </article>
+        ))}
+      </div>
+    </Stage>
+  );
+}
+
+/* ================================================================== */
+/* 04 · CONTACT — in the dawn light that rises top-left                */
+/* ================================================================== */
+export function Dawn() {
+  const { layout } = useCoarse();
+  const shape = layout?.zones.dawn.shape ?? "column";
+  const compact = isCompact(layout, "dawn");
+  const band = shape === "band";
+  return (
+    <Stage id="dawn" align="center">
+      <div className={band && !compact ? "grid grid-cols-12 gap-10 items-end" : ""}>
+        <Beat at={[0.1, 1]} atStack={[0.1, 0.55]} className={band && !compact ? "col-span-7" : ""}>
+          <p className="label">Contact</p>
+          <h2 className="head mt-4 text-[clamp(36px,5vw,84px)] !font-semibold">
+            <Lines at={0.14} lines={["Let’s build", "what’s next."]} />
+          </h2>
+          {!compact && (
+            <p className="body mt-5 max-w-[42ch]">
+              Have a product that needs to listen, reason or scale? I&rsquo;m taking on a small number of AI builds and platform roles.
+            </p>
+          )}
+        </Beat>
+        <Beat at={[0.24, 1]} atStack={[0.55, 1]} className={band && !compact ? "col-span-5" : "mt-8"}>
+          <a href={`mailto:${contact.email}`} className="btn btn--light w-full sm:w-auto !justify-between">
+            {contact.email} <ArrowUpRight size={18} className="arr" />
+          </a>
+          <div className="mt-5 flex flex-wrap gap-2">
+            {contact.links.map((l) => (
+              <a key={l.label} href={l.href} className="pill hover:!text-white">
+                {l.label}
+              </a>
+            ))}
+          </div>
+          <p className="label mt-6 !text-bone-3">
+            © 2026 {identity.first} · {contact.availability}
+          </p>
+        </Beat>
+      </div>
+    </Stage>
+  );
+}
