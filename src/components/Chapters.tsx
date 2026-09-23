@@ -1,28 +1,30 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, Bot, Braces, Cloud, Code2, Container, Layers } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, BrainCircuit, Plus, Database, Infinity, Layers, MonitorSmartphone, Server } from "lucide-react";
 import { Beat, Lines, Stage, isCompact, scrollToChapter, useCoarse, useTick } from "@/film/react";
 import { clamp, ease } from "@/film/timeline";
 import { contact, identity, industries, projects } from "@/data/portfolio";
 import SkillTree from "./SkillTree";
+import ProjectSheet from "./ProjectSheet";
 
 /* ================================================================== */
 /* 00 · HOME — the reference composition: giant name across the jacket */
 /* under the chin, three ticked columns, then the tile row.            */
 /* ================================================================== */
 const TILES = [
-  { name: "Python", icon: Code2 },
-  { name: "Golang", icon: Braces },
-  { name: "LangChain", icon: Bot },
-  { name: "Next.js", icon: Layers },
-  { name: "Docker", icon: Container },
-  { name: "AWS", icon: Cloud },
+  { name: "AI Engineer", short: "AI / ML", icon: BrainCircuit },
+  { name: "Full Stack", short: "Full Stack", icon: Layers },
+  { name: "Backend", short: "Backend", icon: Server },
+  { name: "Data Engineer", short: "Data", icon: Database },
+  { name: "Frontend", short: "Frontend", icon: MonitorSmartphone },
+  { name: "DevOps", short: "DevOps", icon: Infinity },
 ];
+/* The core overview, most important first: who he is → what he builds → how far he takes it. */
 const COLUMNS = [
-  { title: "©2026", text: "Building AI products that listen, reason and ship to production." },
-  { title: "AI / ML", text: "LLM agents, RAG pipelines, voice systems and model integrations." },
-  { title: "Full Stack", text: "Go and FastAPI services to Next.js front-ends, built end to end." },
+  { title: identity.years, text: "Building AI products end to end, from the first model to production." },
+  { title: "AI / ML", text: "LLM agents, retrieval and voice systems that reason and answer back." },
+  { title: "Full Stack", text: "Services, data and interfaces designed, shipped and run as one product." },
 ];
 
 /** The name as a 3D object: extruded depth, chrome face with the film's blue rim light, a travelling sheen. */
@@ -120,7 +122,7 @@ function Tiles({ small = false }: { small?: boolean }) {
           className={`tile-min shine ${small ? "!h-11 !text-[13.5px] !gap-1.5" : ""}`}
           style={{ opacity: 0, ["--d" as string]: `${(1.2 + i * 0.12).toFixed(2)}s` }}
         >
-          <t.icon size={17} strokeWidth={2} aria-hidden /> {t.name}
+          <t.icon size={17} strokeWidth={2} aria-hidden /> {small ? t.short : t.name}
         </li>
       ))}
     </ul>
@@ -271,6 +273,8 @@ export function Work() {
   const prog = useRef<(HTMLDivElement | null)[]>([]);
   const counter = useRef<HTMLSpanElement>(null);
   const cur = useRef(-1);
+  const on = useRef<boolean[]>([]);
+  const [open, setOpen] = useState<number | null>(null);
 
   useTick((t) => {
     const p = t.progressOf("work");
@@ -287,6 +291,12 @@ export function Work() {
       el.style.transform = `translate3d(${(-fout * 28).toFixed(1)}px,0,0)`;
       el.style.visibility = vis <= 0.001 ? "hidden" : "visible";
       el.style.pointerEvents = vis > 0.6 ? "" : "none";
+      // the content cascade plays once the card has wiped in, and resets when it leaves
+      const live = fin > 0.22 && fout < 0.5;
+      if (live !== on.current[i]) {
+        on.current[i] = live;
+        el.classList.toggle("is-on", live);
+      }
       const pr = prog.current[i];
       if (pr) pr.style.transform = `scaleX(${clamp((p - a) / w).toFixed(3)})`;
     });
@@ -296,11 +306,21 @@ export function Work() {
     }
   });
 
-  const go = (i: number) => scrollToChapter("work", W_A + clamp(i, 0, n - 1) * w + w * 0.4);
+  const go = useCallback((i: number) => scrollToChapter("work", W_A + clamp(i, 0, n - 1) * w + w * 0.4), [n, w]);
   const band = shape === "band";
+  const close = useCallback(() => setOpen(null), []);
+  // flipping projects inside the sheet also moves the film to that card behind it
+  const pick = useCallback((i: number) => { setOpen(i); go(i); }, [go]);
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
+  const spot = (e: React.PointerEvent<HTMLElement>) => {
+    if (e.pointerType !== "mouse") return;
+    const r = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.style.setProperty("--mx", `${(e.clientX - r.left).toFixed(0)}px`);
+    e.currentTarget.style.setProperty("--my", `${(e.clientY - r.top).toFixed(0)}px`);
+  };
 
   const Controls = ({ i }: { i: number }) => (
-    <div className="flex items-center gap-2 shrink-0">
+    <div className="flex items-center gap-2 shrink-0" onClick={stop}>
       <button onClick={() => go(i - 1)} disabled={i === 0} className="btn btn--sm !h-9 !w-9 !p-0 disabled:opacity-30" aria-label="Previous project">
         <ArrowLeft size={15} />
       </button>
@@ -334,9 +354,11 @@ export function Work() {
           <article
             key={pj.title}
             ref={(el) => { cards.current[i] = el; }}
-            className={`card ${compact ? "p-4" : band ? "grid grid-cols-12 gap-8 items-start p-6" : "p-5 md:p-7"}`}
+            className={`card card--work ${compact ? "p-4" : band ? "grid grid-cols-12 gap-8 items-start p-6" : "p-5 md:p-7"}`}
             style={{ gridArea: "1 / 1", opacity: 0, visibility: "hidden" }}
             aria-label={pj.title}
+            onClick={() => setOpen(i)}
+            onPointerMove={spot}
           >
             {compact ? (
               /* short bands / phones: title, two lines, controls — nothing taller than the band */
@@ -347,29 +369,36 @@ export function Work() {
                   </p>
                   <Controls i={i} />
                 </div>
-                <h3 className="head mt-1 text-[clamp(22px,14cqh,34px)] !font-semibold">{pj.title}</h3>
-                <p className="body mt-1.5 !text-[13.5px] !leading-[1.45] line-clamp-2">{pj.overview}</p>
-                <div className="mt-3 flex items-center gap-3">
+                <h3 className="wk-r head mt-1 text-[clamp(22px,14cqh,34px)] !font-semibold" style={{ ["--i" as string]: 0 }}>{pj.title}</h3>
+                <p className="wk-r body mt-1.5 !text-[13.5px] !leading-[1.45] line-clamp-2" style={{ ["--i" as string]: 1 }}>{pj.overview}</p>
+                <div className="wk-r mt-3 flex items-center gap-3" style={{ ["--i" as string]: 2 }}>
                   <Progress i={i} />
-                  <span className="label !text-bone-3 truncate max-w-[55%]">{pj.techStack.slice(0, 3).join(" · ")}</span>
+                  <button className="wk-more" onClick={(e) => { e.stopPropagation(); setOpen(i); }} aria-label={`Details: ${pj.title}`}>
+                    Details <Plus size={13} strokeWidth={2.4} />
+                  </button>
                 </div>
               </>
             ) : (
               <>
                 <div className={band ? "col-span-4" : ""}>
-                  <p className="tick label !text-signal-hi">{pj.industry.split(" / ")[0]}</p>
-                  <h3 className="head mt-3 text-[clamp(28px,3vw,46px)] !font-semibold">{pj.title}</h3>
-                  {!band && <p className="label mt-1 !text-bone-3">{pj.role}</p>}
+                  <p className="wk-r tick label !text-signal-hi" style={{ ["--i" as string]: 0 }}>{pj.industry.split(" / ")[0]}</p>
+                  <h3 className="wk-title head mt-3 text-[clamp(28px,3vw,46px)] !font-semibold">
+                    <span>{pj.title}</span>
+                  </h3>
+                  {!band && <p className="wk-r label mt-1 !text-bone-3" style={{ ["--i" as string]: 2 }}>{pj.role}</p>}
                 </div>
-                <p className={`body ${band ? "col-span-4 !mt-0" : "mt-4"}`}>{pj.overview}</p>
+                <p className={`wk-r body ${band ? "col-span-4 !mt-0" : "mt-4"}`} style={{ ["--i" as string]: 3 }}>{pj.overview}</p>
                 <div className={band ? "col-span-4" : "mt-5"}>
                   <ul className="flex flex-wrap gap-1.5">
-                    {pj.techStack.slice(0, 8).map((s) => (
-                      <li key={s} className="chip">{s}</li>
+                    {pj.techStack.slice(0, 8).map((s, k) => (
+                      <li key={s} className="wk-chip chip" style={{ ["--i" as string]: 4 + k * 0.45 }}>{s}</li>
                     ))}
                   </ul>
-                  <div className="mt-5 flex items-center gap-3">
+                  <div className="wk-r mt-5 flex items-center gap-3" style={{ ["--i" as string]: 6 }}>
                     <Progress i={i} />
+                    <button className="wk-more" onClick={(e) => { e.stopPropagation(); setOpen(i); }} aria-label={`Details: ${pj.title}`}>
+                      Details <Plus size={13} strokeWidth={2.4} />
+                    </button>
                     <Controls i={i} />
                   </div>
                 </div>
@@ -378,6 +407,7 @@ export function Work() {
           </article>
         ))}
       </div>
+      <ProjectSheet index={open} onClose={close} onIndex={pick} />
     </Stage>
   );
 }
