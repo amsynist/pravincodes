@@ -19,8 +19,8 @@ export type Shape = "band" | "column";
 
 export const TOP_SAFE = 104; // nav
 export const EDGE = (vp: Viewport) => clamp(vp.w * 0.06, 20, 110);
-/** phones: height kept clear at the bottom for the scroll dock (40px buttons + 14px margin + air) */
-export const DOCK_STRIP = 66;
+/** phones: bottom padding of the under-chin band (the scroll dock lives up by the Menu button) */
+export const DOCK_STRIP = 20;
 
 export function modeFor(w: number, h: number): Mode {
   return w < 820 || w / h < 1.05 ? "stack" : "wide";
@@ -107,7 +107,6 @@ export type Layout = {
 function zoneFor(vp: Viewport, ch: Chapter, cam: CamRect, camAt: (f: number) => CamRect): Zone {
   const edge = EDGE(vp);
   const stack = vp.mode === "stack";
-  // phones reserve a strip at the bottom for the scroll dock (arrows + progress pill)
   const bottomPad = stack ? DOCK_STRIP : clamp(vp.h * 0.035, 24, 44);
   const chin = chinLine(ch.frames, camAt);
   // clear of the padded head box the face guard uses (18px wide, 10px stacked) plus a little air

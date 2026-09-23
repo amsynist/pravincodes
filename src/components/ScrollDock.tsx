@@ -49,7 +49,7 @@ export default function ScrollDock() {
   const label = CHAPTERS[chapter]?.scene ?? "";
 
   /* measure the three surface states off-screen, like the original */
-  const ring = stack ? 40 : 44;
+  const ring = stack ? 34 : 44;
   const labelRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -67,6 +67,27 @@ export default function ScrollDock() {
     document.fonts?.ready.then(measure).catch(() => {});
     return () => ro.disconnect();
   }, [ring, label]);
+
+  // phones: sit in the top bar row, just left of the Menu button (the only strip the face never reaches)
+  useLayoutEffect(() => {
+    if (!stack) return;
+    const menu = document.querySelector<HTMLElement>("header .menu-btn");
+    const dock = root.current?.closest<HTMLElement>(".dock");
+    if (!menu || !dock) return;
+    const place = () => {
+      const r = menu.getBoundingClientRect();
+      dock.style.setProperty("--dock-right", `${Math.round(innerWidth - r.left + 8)}px`);
+      dock.style.setProperty("--dock-top", `${Math.round(r.top + r.height / 2 - ring / 2)}px`);
+    };
+    place();
+    const ro = new ResizeObserver(place);
+    ro.observe(menu);
+    addEventListener("resize", place);
+    return () => {
+      ro.disconnect();
+      removeEventListener("resize", place);
+    };
+  }, [stack, ring]);
 
   useEffect(() => {
     if (!open) return;
@@ -104,8 +125,9 @@ export default function ScrollDock() {
           <ChevronUp size={18} strokeWidth={2} />
         </button>
 
-        {/* the pill: a slot the size of the ring; the surface grows out of it to the left */}
-        <div className="dock__slot">
+        {/* the pill: a slot the size of the ring; the surface grows out of it to the left.
+            Phones: the Menu button carries the progress ring instead (no room beside the face). */}
+        <div className="dock__slot" hidden={stack}>
           {/* hidden measurers */}
           <div className="pointer-events-none invisible absolute" aria-hidden>
             <div ref={labelRef} className="inline-flex items-center gap-2.5 pl-3 pr-[11px] whitespace-nowrap text-[13px] font-medium" style={{ height: ring }}>

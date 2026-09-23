@@ -354,7 +354,7 @@ export function Work() {
           <article
             key={pj.title}
             ref={(el) => { cards.current[i] = el; }}
-            className={`card card--work ${compact ? "p-4" : band ? "grid grid-cols-12 gap-8 items-start p-6" : "p-5 md:p-7"}`}
+            className={`card card--work ${compact ? "wk-c p-4" : band ? "grid grid-cols-12 gap-8 items-start p-6" : "p-5 md:p-7"}`}
             style={{ gridArea: "1 / 1", opacity: 0, visibility: "hidden" }}
             aria-label={pj.title}
             onClick={() => setOpen(i)}
@@ -369,9 +369,9 @@ export function Work() {
                   </p>
                   <Controls i={i} />
                 </div>
-                <h3 className="wk-r head mt-1 text-[clamp(22px,14cqh,34px)] !font-semibold" style={{ ["--i" as string]: 0 }}>{pj.title}</h3>
-                <p className="wk-r body mt-1.5 !text-[13.5px] !leading-[1.45] line-clamp-2" style={{ ["--i" as string]: 1 }}>{pj.overview}</p>
-                <div className="wk-r mt-3 flex items-center gap-3" style={{ ["--i" as string]: 2 }}>
+                <h3 className="wk-r wk-t head mt-1 text-[clamp(22px,14cqh,30px)] !font-semibold !leading-[1.1]" style={{ ["--i" as string]: 0 }}>{pj.title}</h3>
+                <p className="wk-r wk-ov body mt-1.5 !text-[13.5px] !leading-[1.45] line-clamp-2" style={{ ["--i" as string]: 1 }}>{pj.overview}</p>
+                <div className="wk-r wk-row mt-3 flex items-center gap-3" style={{ ["--i" as string]: 2 }}>
                   <Progress i={i} />
                   <button className="wk-more" onClick={(e) => { e.stopPropagation(); setOpen(i); }} aria-label={`Details: ${pj.title}`}>
                     Details <Plus size={13} strokeWidth={2.4} />
@@ -420,21 +420,51 @@ export function Dawn() {
   const shape = layout?.zones.dawn.shape ?? "column";
   const compact = isCompact(layout, "dawn");
   const band = shape === "band";
+  const credit = (
+    <p className="dawn-foot label mt-6 !text-bone-3">
+      © 2026 {identity.first} · {contact.availability} · Scroll UI by{" "}
+      <a href="https://rareui.com" target="_blank" rel="noreferrer" className="link-u hover:text-white">
+        Rare UI
+      </a>
+    </p>
+  );
+  if (compact) {
+    // phones / short bands: one screen — heading, email and links together (no paging)
+    return (
+      <Stage id="dawn" align="center">
+        <Beat at={[0.1, 1]} className="dawn-c">
+          <p className="dawn-label label">Contact</p>
+          <h2 className="dawn-h head mt-2 !font-semibold">
+            <Lines at={0.14} lines={["Let’s build", "what’s next."]} />
+          </h2>
+          <a href={`mailto:${contact.email}`} className="dawn-mail btn btn--light mt-4 w-full !justify-between">
+            {contact.email} <ArrowUpRight size={18} className="arr" />
+          </a>
+          <div className="dawn-links mt-3 flex flex-wrap gap-2">
+            {contact.links.map((l) => (
+              <a key={l.label} href={l.href} className="pill hover:!text-white">
+                {l.label}
+              </a>
+            ))}
+          </div>
+          {credit}
+        </Beat>
+      </Stage>
+    );
+  }
   return (
     <Stage id="dawn" align="center">
-      <div className={band && !compact ? "grid grid-cols-12 gap-10 items-end" : ""}>
-        <Beat at={[0.1, 1]} atStack={[0.1, 0.55]} className={band && !compact ? "col-span-7" : ""}>
+      <div className={band ? "grid grid-cols-12 gap-10 items-end" : ""}>
+        <Beat at={[0.1, 1]} className={band ? "col-span-7" : ""}>
           <p className="label">Contact</p>
           <h2 className="head mt-4 text-[clamp(36px,5vw,84px)] !font-semibold">
             <Lines at={0.14} lines={["Let’s build", "what’s next."]} />
           </h2>
-          {!compact && (
-            <p className="body mt-5 max-w-[42ch]">
-              Have a product that needs to listen, reason or scale? I&rsquo;m taking on a small number of AI builds and platform roles.
-            </p>
-          )}
+          <p className="body mt-5 max-w-[42ch]">
+            Have a product that needs to listen, reason or scale? I&rsquo;m taking on a small number of AI builds and platform roles.
+          </p>
         </Beat>
-        <Beat at={[0.24, 1]} atStack={[0.55, 1]} className={band && !compact ? "col-span-5" : "mt-8"}>
+        <Beat at={[0.24, 1]} className={band ? "col-span-5" : "mt-8"}>
           <a href={`mailto:${contact.email}`} className="btn btn--light w-full sm:w-auto !justify-between">
             {contact.email} <ArrowUpRight size={18} className="arr" />
           </a>
@@ -445,12 +475,7 @@ export function Dawn() {
               </a>
             ))}
           </div>
-          <p className="label mt-6 !text-bone-3">
-            © 2026 {identity.first} · {contact.availability} · Scroll UI by{" "}
-            <a href="https://rareui.com" target="_blank" rel="noreferrer" className="link-u hover:text-white">
-              Rare UI
-            </a>
-          </p>
+          {credit}
         </Beat>
       </div>
     </Stage>

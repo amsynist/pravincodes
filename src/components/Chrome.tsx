@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { CHAPTERS, VIDEO } from "@/film/timeline";
 import { Guard, chapterVis, scrollToChapter, useCoarse, useLayoutState, useTick } from "@/film/react";
 import { onLoadProgress } from "@/film/FilmCanvas";
+import { getEngine } from "@/film/engine";
 import { contact, identity } from "@/data/portfolio";
 import { Wordmark3D } from "./Chapters";
 
@@ -12,6 +13,18 @@ import { Wordmark3D } from "./Chapters";
 /* Guarded against the FACE only (it may sit over hair at the top).    */
 /* ------------------------------------------------------------------ */
 export function TopBar({ onMenu }: { onMenu: () => void }) {
+  // phones: the Menu button is a round icon whose border is the scroll-progress ring
+  const ring = useRef<SVGCircleElement>(null);
+  const lastP = useRef("");
+  useTick((t) => {
+    const el = ring.current;
+    if (!el) return;
+    const max = getEngine().totalScroll;
+    const p = (max > 0 ? Math.min(1, Math.max(0, t.y / max)) : 0).toFixed(3);
+    if (p === lastP.current) return;
+    lastP.current = p;
+    el.style.strokeDashoffset = String(1 - +p);
+  });
   return (
     <header className="fixed inset-x-0 top-0 z-20 pointer-events-none">
       <div className="flex items-center justify-between px-5 pt-5 md:px-[clamp(20px,6vw,110px)] md:pt-6">
@@ -21,16 +34,20 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
               {identity.first.toUpperCase()}
               <sup className="text-[0.5em] font-normal ml-0.5">®</sup>
             </button>
-            <span className="pill !h-7 !px-2.5 !gap-2 !text-[11.5px] sm:!h-8 sm:!px-3.5 sm:!text-[12.5px]">
-              <span className="dot" /> Available
+            <span className="pill avail !h-7 !px-2.5 !gap-2 !text-[11.5px] sm:!h-8 sm:!px-3.5 sm:!text-[12.5px]">
+              <span className="dot" /> <span className="avail__txt">Available</span>
             </span>
           </div>
         </Guard>
         <Guard level="face" className="pointer-events-auto">
-          <button onClick={onMenu} className="btn !h-12 md:!h-14 !px-6 md:!px-7" aria-haspopup="dialog">
-            Menu
+          <button onClick={onMenu} className="btn menu-btn !h-12 md:!h-14 !px-6 md:!px-7" aria-haspopup="dialog" aria-label="Menu">
+            <span className="menu-btn__label">Menu</span>
             <svg width="22" height="14" viewBox="0 0 22 14" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
               <path d="M0 1h22M0 7h22M0 13h22" />
+            </svg>
+            <svg className="menu-btn__ring" viewBox="0 0 48 48" aria-hidden>
+              <circle cx="24" cy="24" r="23" pathLength={1} className="menu-btn__track" />
+              <circle ref={ring} cx="24" cy="24" r="23" pathLength={1} className="menu-btn__fill" />
             </svg>
           </button>
         </Guard>
@@ -134,6 +151,10 @@ export function Menu({ open, onClose }: { open: boolean; onClose: () => void }) 
               <a key={l.label} href={l.href} className="link-u hover:text-white">{l.label}</a>
             ))}
           </div>
+          <p className="label !text-bone-3">
+            Scroll UI by{" "}
+            <a href="https://rareui.com" target="_blank" rel="noreferrer" className="link-u hover:text-white">Rare UI</a>
+          </p>
         </div>
       </div>
     </div>
