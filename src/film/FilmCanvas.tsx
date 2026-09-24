@@ -3,13 +3,23 @@
 import { useEffect, useRef } from "react";
 import { useLayoutState, useTick } from "./react";
 import { getEngine } from "./engine";
-import { VIDEO, clamp } from "./timeline";
+import { clamp } from "./timeline";
 import { PT_W, PT_X0, portraitCropFits, type CamRect } from "./camera";
+import { FRAME_W, SUB, type SetName, countOf, coverageOrder, frameUrl } from "./seq";
+import { drawScrims, drawTracers, scrimKey, scrimsAt, streakEnergy } from "./paint";
 
 /* =====================================================================
    Frame store
-   - All frames are fetched once as compressed blobs (desktop: 1080p WebP, ~28 MB;
-     phones: the 1094×1080 portrait crop as WebP, ~17 MB — fast to decode).
+   - All frames are fetched once as compressed blobs (desktop: 1080p WebP, ~44 MB;
+     phones: the 1094×1080 portrait crop as WebP, ~31 MB — fast to decode).
+   - The fetch order follows the visitor: whatever is nearest the playhead (in the
+     direction of travel) is fetched first, then the reel fills in coarse-to-fine.
+     Scrolling ahead of the download used to show the nearest fetched frame — up to
+     32 frames off; now the frames under the playhead jump the queue.
+   - Frames are stored on the device (Cache API) the first time they arrive, so a
+     return visit reads them from disk instead of the network — with no service
+     worker to go stale: the frame URL carries a version, and the store is one
+     versioned cache that is replaced when the frames are regenerated.
    - Two tiers on phones, the way scroll-scrubbed product pages do it: while the
      finger is moving the light WebP frames scrub; the moment scrolling rests, the
      sharp 1.5× AVIF of that one frame is fetched/decoded and swapped in. Motion hides
@@ -18,34 +28,92 @@ import { PT_W, PT_X0, portraitCropFits, type CamRect } from "./camera";
      with createImageBitmap (decodes OFF the main thread). drawImage on an
      ImageBitmap never triggers a synchronous decode, which was the main
      cause of scroll jank.
-   - The window prefetches ahead in the scroll direction; frames far from the
-     playhead are closed to keep memory bounded.
    ===================================================================== */
 
-type SetName = "lg" | "pt" | "pt2" | "sm";
 type Store = {
   set: "" | SetName;
   blobs: (Blob | null)[];
   bitmaps: Map<number, ImageBitmap>;
   pending: Set<number>;
+  fetching: Set<number>;
   fetched: number;
   limit: number;
+  /** playhead in this set's frame units + direction, for fetch/decode priority */
+  center: number;
+  dir: number;
   listeners: Set<(n: number) => void>;
 };
-const store: Store = { set: "", blobs: [], bitmaps: new Map(), pending: new Set(), fetched: 0, limit: 40, listeners: new Set() };
+const store: Store = {
+  set: "",
+  blobs: [],
+  bitmaps: new Map(),
+  pending: new Set(),
+  fetching: new Set(),
+  fetched: 0,
+  limit: 40,
+  center: 0,
+  dir: 1,
+  listeners: new Set(),
+};
+
+/* ---------------- on-device frame cache (Cache API, versioned by the URL) ---------------- */
+
+const CACHE = "film-seq";
+let cacheP: Promise<Cache | null> | null = null;
+function frameCache() {
+  cacheP ??= (async () => {
+    try {
+      if (typeof caches === "undefined") return null;
+      return await caches.open(CACHE);
+    } catch {
+      return null; // private mode / storage blocked: plain network + HTTP cache
+    }
+  })();
+  return cacheP;
+}
+/** cached blob, else network (and stored for next time). null on failure. */
+async function fetchFrame(u: string): Promise<Blob | null> {
+  const c = await frameCache();
+  if (c) {
+    try {
+      const hit = await c.match(u);
+      if (hit) return await hit.blob();
+    } catch {}
+  }
+  try {
+    const r = await fetch(u);
+    if (!r.ok) return null;
+    if (c) {
+      const copy = r.clone();
+      c.put(u, copy).catch(() => {}); // storage full / evicted: still fine, we have the bytes
+    }
+    return await r.blob();
+  } catch {
+    return null;
+  }
+}
+/** frames from a previous version of the reel are dropped once (only their URL differs) */
+async function pruneOldFrames() {
+  const c = await frameCache();
+  if (!c) return;
+  try {
+    const keys = await c.keys();
+    const cur = frameUrl("lg", 0).split("?")[1];
+    for (const k of keys) if (k.url.includes("/seq/") && !k.url.endsWith(`?${cur}`)) c.delete(k).catch(() => {});
+  } catch {}
+}
 
 /* phones: sharp frames, fetched + decoded on demand for the frame the film rests on */
-const hq = { set: "" as "" | "pt2", bitmaps: new Map<number, ImageBitmap>(), pending: new Set<number>(), order: [] as number[] };
+const hq = { set: "" as "" | "pt2", bitmaps: new Map<number, ImageBitmap>(), pending: new Set<number>(), failed: new Set<number>(), order: [] as number[] };
 function wantHq(i: number) {
-  if (!hq.set || hq.bitmaps.has(i) || hq.pending.has(i)) return;
+  if (!hq.set || hq.bitmaps.has(i) || hq.pending.has(i) || hq.failed.has(i)) return;
   const set = hq.set;
   hq.pending.add(i);
-  fetch(url(set, i))
-    .then((r) => (r.ok ? r.blob() : null))
+  fetchFrame(frameUrl(set, i))
     .then((b) => (b ? createImageBitmap(b) : null))
     .then((bm) => {
       hq.pending.delete(i);
-      if (!bm) return;
+      if (!bm) return void hq.failed.add(i); // missing / undecodable: the WebP frame stays, no retry storm
       if (hq.set !== set) return bm.close();
       hq.bitmaps.set(i, bm);
       hq.order.push(i);
@@ -63,6 +131,7 @@ function resetHq(set: "" | "pt2") {
   hq.bitmaps.forEach((b) => b.close());
   hq.bitmaps.clear();
   hq.pending.clear();
+  hq.failed.clear();
   hq.order = [];
   hq.set = set;
 }
@@ -74,26 +143,6 @@ export function onLoadProgress(cb: (ratio: number) => void) {
     store.listeners.delete(cb);
   };
 }
-
-function order(n: number) {
-  const seen = new Set<number>();
-  const out: number[] = [];
-  for (const step of [32, 16, 8, 4, 2, 1])
-    for (let i = 0; i < n; i += step)
-      if (!seen.has(i)) {
-        seen.add(i);
-        out.push(i);
-      }
-  if (!seen.has(n - 1)) out.push(n - 1);
-  return out;
-}
-
-/* The reel: 191 real frames plus an optical-flow in-between after each (381 total) for the
-   full-quality sets — a real picture every ~22–48 px of scroll. The slow-connection set keeps
-   the 191 originals. Positions everywhere else stay in real-frame units (the face analysis). */
-const SUB: Record<SetName, number> = { lg: 2, pt: 2, pt2: 2, sm: 1 };
-const countOf = (set: SetName | "") => (set ? (VIDEO.count - 1) * SUB[set] + 1 : VIDEO.count);
-const url = (set: string, i: number) => `/seq/${set}/${String(i + 1).padStart(3, "0")}.${set === "pt2" ? "avif" : "webp"}`;
 
 /* Phones: "pt2" = the portrait crop upscaled 1.5× (Lanczos + light sharpen) as AVIF, so a
    3× retina screen isn't magnifying a 1080-px frame ~2×. Falls back to the WebP crop ("pt")
@@ -115,43 +164,85 @@ function canAvif() {
   return avifOk;
 }
 
+/* ---------------- fetching: the playhead first, then the rest of the reel ---------------- */
+
+const PARALLEL = 8; // HTTP/2 multiplexes; the frames are ~100 KB each
+const NEAR = 48; // how far around the playhead "urgent" reaches (in this set's frames)
+let queue: number[] = [];
+let active = 0;
+const tries = new Map<number, number>();
+
+/** next frame to fetch: nearest un-fetched frame around the playhead (ahead first), else the coverage order */
+function pickNext(): number {
+  const N = countOf(store.set);
+  const c = Math.round(store.center);
+  const ahead = store.dir >= 0 ? 1 : -1;
+  const free = (i: number) => i >= 0 && i < N && !store.blobs[i] && !store.fetching.has(i) && (tries.get(i) ?? 0) < 3;
+  if (free(c)) return c;
+  for (let d = 1; d <= NEAR; d++) {
+    if (free(c + ahead * d)) return c + ahead * d;
+    if (d <= 12 && free(c - ahead * d)) return c - ahead * d;
+  }
+  while (queue.length) {
+    const i = queue.shift()!;
+    if (free(i)) return i;
+  }
+  return -1;
+}
+
+function pump() {
+  const set = store.set;
+  if (!set) return;
+  while (active < PARALLEL) {
+    const i = pickNext();
+    if (i < 0) return;
+    active++;
+    store.fetching.add(i);
+    fetchFrame(frameUrl(set, i)).then((blob) => {
+      active--;
+      if (store.set !== set) return pump(); // the set changed under us: hand the slot to the new one
+      store.fetching.delete(i);
+      if (!blob) {
+        // try again after the rest of the reel — three times, then that frame is left to its neighbours
+        const n = (tries.get(i) ?? 0) + 1;
+        tries.set(i, n);
+        if (n < 3) queue.push(i);
+        else store.blobs[i] = null;
+      } else {
+        store.blobs[i] = blob;
+        store.fetched++;
+        store.listeners.forEach((l) => l(store.fetched / countOf(set)));
+        // make sure the frame we're sitting on gets decoded as soon as its bytes arrive
+        getEngine().poke();
+      }
+      pump();
+    });
+  }
+}
+
 function load(set: SetName, limit: number) {
   store.limit = limit;
   if (store.set === set) return;
   store.bitmaps.forEach((b) => b.close());
   store.bitmaps.clear();
   store.pending.clear();
+  store.fetching.clear();
   store.set = set;
   const N = countOf(set);
   store.blobs = new Array(N).fill(null);
   store.fetched = 0;
-  const queue = order(N);
-  let active = 0;
-  const pump = () => {
-    while (active < 6 && queue.length) {
-      const i = queue.shift()!;
-      active++;
-      fetch(url(set, i))
-        .then((r) => (r.ok ? r.blob() : null))
-        .catch(() => null)
-        .then((blob) => {
-          active--;
-          if (store.set !== set) return;
-          store.blobs[i] = blob;
-          store.fetched++;
-          store.listeners.forEach((l) => l(store.fetched / N));
-          // make sure the frame we're sitting on gets decoded as soon as its bytes arrive
-          getEngine().poke();
-          pump();
-        });
-    }
-  };
-  pump();
+  store.center = clamp(store.center, 0, N - 1);
+  queue = coverageOrder(N);
+  tries.clear();
+  pump(); // fetches of a previous set still in flight release their slots as they finish
+  pruneOldFrames();
 }
 
+/** decodes in flight at once: createImageBitmap runs off the main thread, so a few more only help catch-up */
+const DECODES = 6;
 function decode(i: number) {
   if (i < 0 || i >= countOf(store.set)) return;
-  if (store.bitmaps.has(i) || store.pending.has(i) || store.pending.size >= 4) return;
+  if (store.bitmaps.has(i) || store.pending.has(i) || store.pending.size >= DECODES) return;
   const blob = store.blobs[i];
   if (!blob) return;
   const set = store.set;
@@ -167,10 +258,12 @@ function decode(i: number) {
 }
 
 function prefetch(center: number, dir: number) {
+  store.center = center;
+  store.dir = dir;
   decode(center);
   const ahead = dir >= 0 ? 1 : -1;
   const reach = Math.min(20, store.limit - 5); // never prefetch more than the budget can keep
-  for (let d = 1; d <= reach && store.pending.size < 4; d++) {
+  for (let d = 1; d <= reach && store.pending.size < DECODES; d++) {
     decode(center + ahead * d);
     if (d <= 4) decode(center - ahead * d);
   }
@@ -205,21 +298,41 @@ function nearest(i: number, dir: number, shown: number): [ImageBitmap | null, nu
   return [null, -1];
 }
 
-/* ---------------- renderer ---------------- */
+/* =====================================================================
+   Renderer — two canvases, one picture.
+
+   The frames are 1080p. A 4K monitor (or a 3× phone) shows them enlarged, and the old
+   renderer enlarged them by drawing into a canvas the size of the whole screen in
+   device pixels: 8.3 million pixels written twice (two blended frames) on every one of
+   the ~60 redraws a second while scrolling. On a Mac at 2× that was ~5 MP and fine; on
+   a 4K display it was the stutter.
+
+   Now, like Apple's scroll-driven product pages:
+     · while the film MOVES it is drawn into a canvas at the frames' own resolution
+       (1920×1080 for the desktop set) and the GPU compositor stretches it to the
+       screen — a bilinear stretch, the same filter the canvas used while scrubbing
+       before, so the picture in motion is identical and costs 4× less on 4K;
+     · the moment it RESTS, the same frame is drawn once more into a canvas at full
+       device resolution with the high-quality resampler and shown instead. That is
+       exactly the at-rest picture the site had before — nothing is downscaled, ever.
+   On screens where the two sizes coincide (a 1080p laptop) only one canvas is used.
+   ===================================================================== */
 
 const BG = "#04050c";
 
 export default function FilmCanvas() {
-  const ref = useRef<HTMLCanvasElement>(null);
+  const hiRef = useRef<HTMLCanvasElement>(null);
+  const loRef = useRef<HTMLCanvasElement>(null);
   const layout = useLayoutState();
-  const last = useRef({ key: "", frame: 0, pos: -1, changedAt: 0, dir: 1, shown: -1, lastT: 0, ema: 16.7, noBlend: false });
-  const scale = useRef(1);
+  const last = useRef({ key: "", frame: 0, pos: -1, changedAt: 0, dir: 1, shown: -1, lastT: 0, ema: 16.7, noBlend: false, tier: "" as "" | "hi" | "lo" });
+  const scales = useRef({ hi: 1, lo: 1, dual: false, set: "" as "" | SetName });
 
   useEffect(() => {
     if (!layout) return;
-    const c = ref.current!;
+    const hi = hiRef.current!;
+    const lo = loRef.current!;
     const { w, h } = layout.vp;
-    // Backing store at the screen's real pixel density (phones up to 3×), so the frame is
+    // Rest canvas at the screen's real pixel density (phones up to 3×), so the frame is
     // resampled ONCE by the canvas' high-quality filter instead of a second bilinear stretch
     // by the compositor — that second stretch is what made the film look softer than the mp4.
     const maxPx = 8.4e6; // ~2880×2900 — keeps big 4K monitors from allocating absurd canvases
@@ -229,11 +342,28 @@ export default function FilmCanvas() {
     // lg: full 1920×1080 frames · pt2/pt: portrait crops for phones · sm: 960px for slow connections
     const portrait = layout.vp.mode === "stack" && portraitCropFits(layout.vp);
     const apply = (set: SetName) => {
-      // slow connections keep the light path; everything else draws at device resolution
-      scale.current = set === "sm" ? 1 : Math.max(1, dpr);
-      c.width = Math.round(w * scale.current);
-      c.height = Math.round(h * scale.current);
+      // slow connections keep the light path; everything else rests at device resolution
+      const hiS = set === "sm" ? 1 : Math.max(1, dpr);
+      // scrub canvas: the frames' own pixels per CSS pixel, never above the rest canvas.
+      // (every set spans the same 1920-px source width over cam.dw CSS px — the portrait
+      // crop is a slice of it — except the 960-px slow-connection set)
+      const camW = layout.cams.still.dw; // the cover scale is the same for every chapter
+      const srcS = (set === "sm" ? FRAME_W.sm : FRAME_W.lg) / camW;
+      const loS = Math.max(0.5, Math.min(hiS, srcS));
+      const dual = loS < hiS * 0.97;
+      scales.current = { hi: hiS, lo: dual ? loS : hiS, dual, set };
+      hi.width = Math.round(w * hiS);
+      hi.height = Math.round(h * hiS);
+      if (dual) {
+        lo.width = Math.round(w * loS);
+        lo.height = Math.round(h * loS);
+      } else {
+        lo.width = lo.height = 1;
+      }
+      lo.style.visibility = "hidden";
+      hi.style.visibility = "";
       last.current.key = "";
+      last.current.tier = "";
       // decoded-frame budget: lg 8.3 MB, pt 4.7 MB, sm 2 MB per frame
       load(set, set === "lg" ? 26 : set === "pt" ? 30 : 48);
       getEngine().poke();
@@ -254,11 +384,13 @@ export default function FilmCanvas() {
   }, [layout]);
 
   useTick((t) => {
-    const c = ref.current;
-    if (!c) return;
+    const hi = hiRef.current;
+    const lo = loRef.current;
+    if (!hi || !lo) return;
     const L = last.current;
+    const S = scales.current;
     const cam = t.cam;
-    const camKey = `${cam.dw.toFixed(1)}|${cam.ox.toFixed(1)}|${cam.oy.toFixed(1)}|${c.width}`;
+    const camKey = `${cam.dw.toFixed(1)}|${cam.ox.toFixed(1)}|${cam.oy.toFixed(1)}|${hi.width}`;
     /* Sub-frame blending. The reel is 191 frames stretched over ~14 screens of scroll — one
        new picture every 45–95 px — so a slow scroll showed a new frame only a few times a
        second (stop-motion, however smooth the page). Drawing frame i, then frame i+1 on top
@@ -325,17 +457,43 @@ export default function FilmCanvas() {
         src = `${store.set}${at}`;
       }
     }
-    // while scrubbing, bilinear filtering is plenty (and cheaper); at rest, the high-quality filter
-    const q = resting ? "high" : "low";
-    const key = `${src}|${q}|${camKey}`;
+    // in motion: the scrub canvas at source resolution, bilinear; at rest: the device-resolution
+    // canvas with the high-quality filter (a single canvas does both where they coincide)
+    const tier: "hi" | "lo" = S.dual && !resting ? "lo" : "hi";
+    const q: ImageSmoothingQuality = resting ? "high" : "low";
+    // the scrims and streak tracers are part of this picture too (see paint.ts)
+    const scrims = scrimsAt(t);
+    const tracing = streakEnergy(t) > 0.02;
+    const key = `${src}|${q}|${tier}|${camKey}|${scrimKey(scrims)}|${tracing ? t.chapter : "-"}`;
     if (key === L.key) return;
     L.key = key;
+    const c = tier === "lo" ? lo : hi;
     const ctx = c.getContext("2d", { alpha: false });
     if (!ctx) return;
-    draw(ctx, A, B, alpha, cam, scale.current, t.layout.vp.w, t.layout.vp.h, store.set === "pt" || store.set === "pt2", q);
+    const crop = store.set === "pt" || store.set === "pt2";
+    const { w: vw, h: vh } = t.layout.vp;
+    draw(ctx, A, B, alpha, cam, tier === "lo" ? S.lo : S.hi, vw, vh, crop, q);
+    drawScrims(ctx, scrims, vw, vh);
+    if (tracing) drawTracers(ctx, t, vw, vh);
+    if (tier !== L.tier) {
+      // swap in the same task as the draw: the compositor never sees an empty frame
+      L.tier = tier;
+      if (tier === "lo") {
+        lo.style.visibility = "";
+        hi.style.visibility = "hidden";
+      } else {
+        hi.style.visibility = "";
+        lo.style.visibility = "hidden";
+      }
+    }
   });
 
-  return <canvas ref={ref} className="film-canvas" aria-hidden />;
+  return (
+    <>
+      <canvas ref={hiRef} className="film-canvas" aria-hidden />
+      <canvas ref={loRef} className="film-canvas film-canvas--scrub" aria-hidden style={{ visibility: "hidden" }} />
+    </>
+  );
 }
 
 function draw(

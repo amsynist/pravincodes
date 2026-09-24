@@ -53,6 +53,8 @@ class Engine {
   debug = false;
   /** touch screens follow the finger 1:1 (native momentum already smooths it) */
   private touch = false;
+  private wasMoving = false;
+  private lastMoveAt = -1e9;
 
   start() {
     if (this.started || typeof window === "undefined") return;
@@ -267,6 +269,14 @@ class Engine {
     const moving = Math.abs(d) >= 0.4;
     if (moving) this.settle = 60;
     else this.settle--;
+    // html[data-moving] while the film scrubs: CSS pauses the decorative repaint loops
+    // (wordmark sheen, orbiting card light) so the GPU has only the film to composite
+    if (moving) this.lastMoveAt = t;
+    const inMotion = t - this.lastMoveAt < 260; // sticky: touch scrolls move in steps, not every tick
+    if (inMotion !== this.wasMoving) {
+      this.wasMoving = inMotion;
+      document.documentElement.toggleAttribute("data-moving", inMotion);
+    }
 
     const { i, p } = this.locate(this.y);
     const ch = CHAPTERS[i];

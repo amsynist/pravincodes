@@ -57,7 +57,7 @@ To change the pacing, edit `frames` or `vh`. To change the width at which a chap
    * Content `<Guard>`s are checked against the head box: hair, face and nose.
    * The top bar is checked against the face box only. It can sit over hair at the top edge but never over the face.
    * Anything that touches its box fades and slides away.
-4. **Tracers** (`Overlay.tsx`). Thin lines ride the light streaks the analysis detected, and are cut around the head.
+4. **Tracers** (`paint.ts`). Thin lines ride the light streaks the analysis detected, and are cut around the head.
 
 ## 4. Debug mode
 
@@ -73,8 +73,25 @@ Open `/?debug` to see:
 
 * `public/seq/lg/*.webp`: full 1920×1080 frames at quality 90, about 23 MB. Used on desktop.
 * `public/seq/pt/*.webp`: native-resolution portrait crops (1094×1080, source x 288–1382) at quality 88, about 17 MB. Used on phones. The crop covers every position the face-tracking camera can reach, so phones draw real pixels rather than an upscaled slice.
+* `public/seq/pt2/*.avif`: the portrait crop upscaled 1.5× (1641×1620), fetched one frame at a time for the frame a phone rests on.
 * `public/seq/sm/*.webp`: 960×540 frames for slow connections (Save-Data, 2G/3G).
-* The canvas renders at the frames' own pixel density, capped at the device's. Decoding happens off the main thread through `createImageBitmap`, in a sliding window around the playhead.
+* Decoding happens off the main thread through `createImageBitmap`, in a sliding window around the playhead.
+
+### Rendering at any resolution (`src/film/FilmCanvas.tsx`)
+
+The frames are 1080p; big screens show them enlarged. Two canvases share the job, the way Apple's scroll-driven product pages do:
+
+* **While the film moves** it is drawn into a canvas at the frames' own resolution (1920×1080 on desktop) and the GPU compositor stretches that to the screen. That stretch is bilinear — the same filter the canvas used for scrubbing anyway — so the moving picture is unchanged, and a 4K monitor writes 2 MP per redraw instead of 8.3 MP, twice, sixty times a second.
+* **The moment it rests** (140 ms without movement) the frame is drawn once more into a canvas at full device resolution with the high-quality resampler (phones: the sharp `pt2` frame) and shown instead. This is the picture the site always showed at rest; nothing is ever downscaled.
+* Where the two sizes coincide (a 1080p laptop) only one canvas is used. Both are swapped in the same task as the draw, so there is never an empty frame.
+
+The legibility scrims, the vignette and the streak tracers are painted into the film canvas (`paint.ts`) rather than stacked over it as five screen-sized layers — on a 4K monitor each of those was a 33 MB texture blended on every frame. While the film scrubs, `<html data-moving>` is set and the decorative loops that repaint every frame (the wordmark sheen, the light orbiting a work card) hold still. The `film-overlay` canvas now only draws the `?debug` boxes.
+
+### Loading and caching (`src/film/seq.ts`)
+
+* Frame URLs carry `?v=SEQ_VERSION`; `next.config.ts` serves `/seq/*` as `immutable` for a year. **Bump `SEQ_VERSION` whenever the frames are regenerated** — every visitor then fetches the new reel exactly once.
+* The first time a frame arrives it is also stored on the device with the Cache API (`film-seq`). Return visits read the whole reel from disk; frames from an older version are pruned. There is no service worker to go stale.
+* Fetch order follows the visitor: the frames under and ahead of the playhead go first, then the reel fills in coarse-to-fine (every 32nd frame, 16th, …). The first twelve frames are `<link rel=preload>`ed from the HTML.
 
 To regenerate from the original PNGs in `assets-source/`:
 
@@ -83,5 +100,7 @@ ffmpeg -i frame_%03d.png -c:v libwebp -quality 90 -compression_level 4 -preset p
 ffmpeg -i frame_%03d.png -vf crop=1094:1080:288:0 -c:v libwebp -quality 88 -compression_level 4 -preset photo -start_number 1 public/seq/pt/%03d.webp
 ffmpeg -i frame_%03d.png -vf scale=960:540:flags=lanczos -c:v libwebp -quality 70 -start_number 1 public/seq/sm/%03d.webp
 ```
+
+Then bump `SEQ_VERSION` in `src/film/seq.ts`.
 
 **Fonts** are self-hosted in `src/app/fonts`, all under the OFL licence: Outfit (wordmark and headings), Geist (text) and Geist Mono (tracer labels).

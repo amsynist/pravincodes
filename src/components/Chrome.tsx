@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CHAPTERS, VIDEO } from "@/film/timeline";
-import { Guard, chapterVis, scrollToChapter, useCoarse, useLayoutState, useTick } from "@/film/react";
+import { Guard, scrollToChapter, useChapter, useTick } from "@/film/react";
 import { onLoadProgress } from "@/film/FilmCanvas";
 import { getEngine } from "@/film/engine";
 import { contact, identity } from "@/data/portfolio";
@@ -89,54 +89,11 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Scrims — legibility gradients that follow each chapter's zone       */
-/* ------------------------------------------------------------------ */
-export function Scrims() {
-  const band = useRef<HTMLDivElement>(null);
-  const r = useRef<HTMLDivElement>(null);
-  const l = useRef<HTMLDivElement>(null);
-  const layout = useLayoutState();
-  const last = useRef("");
-  useTick((t) => {
-    let vb = 0, vr = 0, vl = 0, by = 0, bw = 0;
-    for (const c of CHAPTERS) {
-      const v = chapterVis(c.id, t.progressOf(c.id));
-      const z = t.layout.zones[c.id];
-      if (z.shape === "band") {
-        vb = Math.max(vb, v);
-        by += z.y * v;
-        bw += v;
-        if (c.id === "signal") vl = Math.max(vl, v * 0.85); // the skill tree also climbs the left side
-      } else if (c.side === "right") vr = Math.max(vr, v);
-      else vl = Math.max(vl, v);
-    }
-    const bandY = bw > 0 ? (by / bw).toFixed(0) : "";
-    const key = `${vb.toFixed(3)}|${vr.toFixed(3)}|${vl.toFixed(3)}|${bandY}`;
-    if (key === last.current) return; // don't repaint full-screen gradients unless something changed
-    last.current = key;
-    if (band.current) {
-      band.current.style.opacity = vb.toFixed(3);
-      if (bandY) band.current.style.setProperty("--band-y", `${bandY}px`);
-    }
-    if (r.current) r.current.style.opacity = vr.toFixed(3);
-    if (l.current) l.current.style.opacity = vl.toFixed(3);
-  });
-  return (
-    <>
-      <div ref={band} className="scrim scrim--band" style={{ ["--band-y" as string]: `${layout?.zones.still.y ?? 600}px` }} />
-      <div ref={r} className="scrim scrim--right" />
-      <div ref={l} className="scrim scrim--left" />
-      <div className="scrim scrim--vignette" />
-    </>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* Menu — full-height sheet from the right                             */
 /* ------------------------------------------------------------------ */
 export function Menu({ open, onClose }: { open: boolean; onClose: () => void }) {
   const panel = useRef<HTMLDivElement>(null);
-  const { chapter } = useCoarse();
+  const chapter = useChapter();
   useEffect(() => {
     if (!open) return;
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();

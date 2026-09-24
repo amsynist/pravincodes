@@ -24,13 +24,28 @@ export function useFilmStart() {
 }
 
 const serverCoarse = { layout: null, chapter: 0, unit: 0 };
+/** Layout + active chapter. Re-renders on every chapter change — only for chrome that shows the chapter. */
 export function useCoarse() {
   const e = getEngine();
   return useSyncExternalStore(e.subscribeCoarse, e.getCoarse, () => serverCoarse);
 }
 
+const getLayout = () => getEngine().coarse.layout;
+const noLayout = () => null;
+/**
+ * Layout only. The layout object is replaced on resize alone, so stages, beats and the
+ * chapters that use this never re-render mid-scroll — crossing a chapter boundary used to
+ * re-render the whole tree (every Beat, every card) on the same frame the film moved.
+ */
 export function useLayoutState(): Layout | null {
-  return useCoarse().layout;
+  const e = getEngine();
+  return useSyncExternalStore(e.subscribeCoarse, getLayout, noLayout);
+}
+
+/** Active chapter index only (menu, dock). */
+export function useChapter(): number {
+  const e = getEngine();
+  return useSyncExternalStore(e.subscribeCoarse, () => e.coarse.chapter, () => 0);
 }
 
 /** Subscribe to every engine tick without re-rendering. */
@@ -171,7 +186,14 @@ export function Beat({
   });
   const T = Tag as "div";
   return (
-    <T ref={ref as React.Ref<HTMLDivElement>} className={`beat ${className}`} style={{ opacity: 0, ...style }}>
+    <T
+      ref={ref as React.Ref<HTMLDivElement>}
+      className={`beat ${className}`}
+      style={{ opacity: 0, ...style }}
+      // the snap logic reads these: a beat that stays (end ≥ 1) and hasn't started yet is content still to come
+      data-in={win[0]}
+      data-out={win[1]}
+    >
       {children}
     </T>
   );
@@ -292,12 +314,43 @@ function stopsY(): number[] {
   return out.sort((a, b) => a - b);
 }
 
-/** Is anything in the visible stage(s) half-shown (fading, mid-wipe) — or is nothing shown at all? */
+/**
+ * Is anything in the visible stage(s) half-shown — or is nothing shown at all?
+ *  · a stage or element mid-fade / mid-wipe
+ *  · a display line still below its mask (the statement reveals line by line)
+ *  · content that hasn't arrived yet: a beat that stays for the rest of the chapter but
+ *    starts between here and the chapter's next rest point (stopping in About with only
+ *    the heading showing used to count as "complete" — the body and the stats were simply
+ *    invisible — so the visitor was left on a half-built screen)
+ */
 function screenIncomplete(): boolean {
   const stages = [...document.querySelectorAll<HTMLElement>("[data-stage]")].filter((s) => +getComputedStyle(s).opacity > 0.02);
   if (!stages.length) return true; // only the film: a gap between sections
+  const tick = getEngine().snapshot;
+  const layout = getEngine().coarse.layout;
   for (const st of stages) {
     if (+getComputedStyle(st).opacity < 0.98) return true;
+    const id = st.dataset.stage as ChapterId;
+    if (tick && id in STOPS) {
+      const p = tick.progressOf(id);
+      const v = restVariant[id] ?? (isCompact(layout, id) ? "compact" : "full");
+      const nextStop = STOPS[id][v].find((s) => s > p + 0.002);
+      if (nextStop !== undefined) {
+        for (const b of st.querySelectorAll<HTMLElement>(".beat[data-in]")) {
+          const a = +b.dataset.in!;
+          const z = +b.dataset.out!;
+          if (z >= 1 && a > p && a < nextStop) return true; // more of this screen is still to come
+        }
+      }
+      for (const ln of st.querySelectorAll<HTMLElement>(".line__in")) {
+        const m = /translate3d\(0, (-?[\d.]+)%/.exec(ln.style.transform);
+        if (m && +m[1] > 1 && +getComputedStyle(ln).opacity > 0.03) {
+          // only counts if the line's own beat is (becoming) visible
+          const beat = ln.closest<HTMLElement>(".beat");
+          if (!beat || +getComputedStyle(beat).opacity > 0.03) return true;
+        }
+      }
+    }
     let shown = 0;
     for (const el of st.querySelectorAll<HTMLElement>("h1,h2,h3,p,li,a,button,dd,.chip,.st-leaf")) {
       if (el instanceof HTMLButtonElement && el.disabled) continue;

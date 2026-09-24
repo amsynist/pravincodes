@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, ArrowUpRight, BrainCircuit, Plus, Database, Infinity, Layers, MonitorSmartphone, Server } from "lucide-react";
-import { Beat, Lines, Stage, W_A, W_SPAN, isCompact, scrollToChapter, useCoarse, useTick } from "@/film/react";
+import { Beat, Lines, Stage, W_A, W_SPAN, isCompact, scrollToChapter, useLayoutState, useTick } from "@/film/react";
 import { clamp, ease } from "@/film/timeline";
 import { contact, identity, industries, projects } from "@/data/portfolio";
 import SkillTree from "./SkillTree";
@@ -45,7 +45,7 @@ export function Wordmark3D({ text }: { text: string }) {
 
 /** Fits the wordmark to the band: as wide as the zone allows, never taller than the space under the chin. */
 function Wordmark({ reserve }: { reserve: number }) {
-  const { layout } = useCoarse();
+  const layout = useLayoutState();
   const ref = useRef<HTMLHeadingElement>(null);
   const [size, setSize] = useState<number | null>(null);
   useEffect(() => {
@@ -131,7 +131,7 @@ function Tiles({ small = false }: { small?: boolean }) {
 }
 
 export function Still() {
-  const { layout } = useCoarse();
+  const layout = useLayoutState();
   const compact = isCompact(layout, "still");
   const stack = layout?.vp.mode === "stack";
   return (
@@ -183,7 +183,7 @@ export function Still() {
 /* 01 · ABOUT — beside him (right) when there's room, else under chin  */
 /* ================================================================== */
 export function Intent() {
-  const { layout } = useCoarse();
+  const layout = useLayoutState();
   const shape = layout?.zones.intent.shape ?? "column";
   const compact = isCompact(layout, "intent");
   const stats = [
@@ -262,64 +262,12 @@ export function Signal() {
 /* ================================================================== */
 /* 03 · WORK — he turns away; the projects take the left side          */
 /* ================================================================== */
-export function Work() {
-  const { layout } = useCoarse();
-  const shape = layout?.zones.work.shape ?? "column";
-  const compact = isCompact(layout, "work");
-  const n = projects.length;
-  const w = W_SPAN / n;
-  const cards = useRef<(HTMLElement | null)[]>([]);
-  const prog = useRef<(HTMLDivElement | null)[]>([]);
-  const counter = useRef<HTMLSpanElement>(null);
-  const cur = useRef(-1);
-  const on = useRef<boolean[]>([]);
-  const [open, setOpen] = useState<number | null>(null);
-
-  useTick((t) => {
-    const p = t.progressOf("work");
-    const k = clamp(Math.floor((p - W_A) / w), 0, n - 1);
-    cards.current.forEach((el, i) => {
-      if (!el) return;
-      const a = W_A + i * w;
-      // exit first (fade + drift left), then the next card wipes in left→right like a light streak
-      const fin = i === 0 ? ease(0.02, W_A + 0.02, p) : ease(a + 0.004, a + w * 0.3, p);
-      const fout = i === n - 1 ? 0 : ease(a + w - 0.022, a + w - 0.002, p);
-      const vis = fin * (1 - fout);
-      el.style.opacity = (Math.min(1, fin * 3) * (1 - fout)).toFixed(3);
-      el.style.clipPath = `inset(0 ${((1 - fin) * 100).toFixed(2)}% 0 0 round 24px)`;
-      el.style.transform = `translate3d(${(-fout * 28).toFixed(1)}px,0,0)`;
-      el.style.visibility = vis <= 0.001 ? "hidden" : "visible";
-      el.style.pointerEvents = vis > 0.6 ? "" : "none";
-      // the content cascade plays once the card has wiped in, and resets when it leaves
-      const live = fin > 0.22 && fout < 0.5;
-      if (live !== on.current[i]) {
-        on.current[i] = live;
-        el.classList.toggle("is-on", live);
-      }
-      const pr = prog.current[i];
-      if (pr) pr.style.transform = `scaleX(${clamp((p - a) / w).toFixed(3)})`;
-    });
-    if (k !== cur.current) {
-      cur.current = k;
-      if (counter.current) counter.current.textContent = String(k + 1).padStart(2, "0");
-    }
-  });
-
-  const go = useCallback((i: number) => scrollToChapter("work", W_A + clamp(i, 0, n - 1) * w + w * 0.5), [n, w]);
-  const band = shape === "band";
-  const close = useCallback(() => setOpen(null), []);
-  // flipping projects inside the sheet also moves the film to that card behind it
-  const pick = useCallback((i: number) => { setOpen(i); go(i); }, [go]);
-  const stop = (e: React.MouseEvent) => e.stopPropagation();
-  const spot = (e: React.PointerEvent<HTMLElement>) => {
-    if (e.pointerType !== "mouse") return;
-    const r = e.currentTarget.getBoundingClientRect();
-    e.currentTarget.style.setProperty("--mx", `${(e.clientX - r.left).toFixed(0)}px`);
-    e.currentTarget.style.setProperty("--my", `${(e.clientY - r.top).toFixed(0)}px`);
-  };
-
-  const Controls = ({ i }: { i: number }) => (
-    <div className="flex items-center gap-2 shrink-0" onClick={stop}>
+/* Stable components (module scope): defining these inside Work re-created them on every
+   render, which made React unmount and remount the buttons and progress bars each time. */
+const stopClick = (e: React.MouseEvent) => e.stopPropagation();
+function WorkControls({ i, n, go }: { i: number; n: number; go: (i: number) => void }) {
+  return (
+    <div className="flex items-center gap-2 shrink-0" onClick={stopClick}>
       <button onClick={() => go(i - 1)} disabled={i === 0} className="btn btn--sm !h-9 !w-9 !p-0 disabled:opacity-30" aria-label="Previous project">
         <ArrowLeft size={15} />
       </button>
@@ -332,11 +280,92 @@ export function Work() {
       </button>
     </div>
   );
-  const Progress = ({ i }: { i: number }) => (
+}
+function WorkProgress({ i, register }: { i: number; register: (i: number, el: HTMLDivElement | null) => void }) {
+  return (
     <div className="relative h-[2px] flex-1 rounded bg-white/10 overflow-hidden">
-      <div ref={(el) => { prog.current[i] = el; }} className="absolute inset-0 origin-left bg-[var(--signal-hi)]" style={{ transform: "scaleX(0)" }} />
+      <div ref={(el) => register(i, el)} className="absolute inset-0 origin-left bg-[var(--signal-hi)]" style={{ transform: "scaleX(0)" }} />
     </div>
   );
+}
+
+export function Work() {
+  const layout = useLayoutState();
+  const shape = layout?.zones.work.shape ?? "column";
+  const compact = isCompact(layout, "work");
+  const n = projects.length;
+  const w = W_SPAN / n;
+  const cards = useRef<(HTMLElement | null)[]>([]);
+  const prog = useRef<(HTMLDivElement | null)[]>([]);
+  const counter = useRef<HTMLSpanElement>(null);
+  const cur = useRef(-1);
+  const on = useRef<boolean[]>([]);
+  const [open, setOpen] = useState<number | null>(null);
+
+  const keys = useRef<string[]>([]);
+  const progKeys = useRef<string[]>([]);
+
+  useTick((t) => {
+    const p = t.progressOf("work");
+    const k = clamp(Math.floor((p - W_A) / w), 0, n - 1);
+    cards.current.forEach((el, i) => {
+      if (!el) return;
+      const a = W_A + i * w;
+      // exit first (fade + drift left), then the next card wipes in left→right like a light streak
+      const fin = i === 0 ? ease(0.02, W_A + 0.02, p) : ease(a + 0.004, a + w * 0.3, p);
+      const fout = i === n - 1 ? 0 : ease(a + w - 0.022, a + w - 0.002, p);
+      const vis = fin * (1 - fout);
+      const o = (Math.min(1, fin * 3) * (1 - fout)).toFixed(3);
+      const inset = ((1 - fin) * 100).toFixed(2);
+      const tx = (-fout * 28).toFixed(1);
+      const shown = vis > 0.001;
+      // one string per card: no style writes (and no style recalc) unless something changed —
+      // seven hidden cards used to be re-styled on every frame of the whole film
+      const key = `${o}|${inset}|${tx}|${shown}|${vis > 0.6}`;
+      if (key !== keys.current[i]) {
+        keys.current[i] = key;
+        el.style.opacity = o;
+        el.style.clipPath = `inset(0 ${inset}% 0 0 round 24px)`;
+        el.style.transform = `translate3d(${tx}px,0,0)`;
+        el.style.visibility = shown ? "visible" : "hidden";
+        el.style.pointerEvents = vis > 0.6 ? "" : "none";
+      }
+      // the content cascade plays once the card has wiped in, and resets when it leaves
+      const live = fin > 0.22 && fout < 0.5;
+      if (live !== on.current[i]) {
+        on.current[i] = live;
+        el.classList.toggle("is-on", live);
+      }
+      const pr = prog.current[i];
+      if (pr && shown) {
+        const sx = clamp((p - a) / w).toFixed(3);
+        if (sx !== progKeys.current[i]) {
+          progKeys.current[i] = sx;
+          pr.style.transform = `scaleX(${sx})`;
+        }
+      }
+    });
+    if (k !== cur.current) {
+      cur.current = k;
+      if (counter.current) counter.current.textContent = String(k + 1).padStart(2, "0");
+    }
+  });
+
+  const go = useCallback((i: number) => scrollToChapter("work", W_A + clamp(i, 0, n - 1) * w + w * 0.5), [n, w]);
+  const band = shape === "band";
+  const close = useCallback(() => setOpen(null), []);
+  // flipping projects inside the sheet also moves the film to that card behind it
+  const pick = useCallback((i: number) => { setOpen(i); go(i); }, [go]);
+  const setProg = useCallback((i: number, el: HTMLDivElement | null) => {
+    prog.current[i] = el;
+    progKeys.current[i] = "";
+  }, []);
+  const spot = (e: React.PointerEvent<HTMLElement>) => {
+    if (e.pointerType !== "mouse") return;
+    const r = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.style.setProperty("--mx", `${(e.clientX - r.left).toFixed(0)}px`);
+    e.currentTarget.style.setProperty("--my", `${(e.clientY - r.top).toFixed(0)}px`);
+  };
 
   return (
     <Stage id="work" align="center">
@@ -366,12 +395,12 @@ export function Work() {
                   <p className="label !text-signal-hi truncate">
                     {String(i + 1).padStart(2, "0")}/{String(n).padStart(2, "0")} · {pj.industry.split(" / ")[0]}
                   </p>
-                  <Controls i={i} />
+                  <WorkControls i={i} n={n} go={go} />
                 </div>
                 <h3 className="wk-r wk-t head mt-1 text-[clamp(22px,14cqh,30px)] !font-semibold !leading-[1.1]" style={{ ["--i" as string]: 0 }}>{pj.title}</h3>
                 <p className="wk-r wk-ov body mt-1.5 !text-[13.5px] !leading-[1.45] line-clamp-2" style={{ ["--i" as string]: 1 }}>{pj.overview}</p>
                 <div className="wk-r wk-row mt-3 flex items-center gap-3" style={{ ["--i" as string]: 2 }}>
-                  <Progress i={i} />
+                  <WorkProgress i={i} register={setProg} />
                   <button className="wk-more" onClick={(e) => { e.stopPropagation(); setOpen(i); }} aria-label={`Details: ${pj.title}`}>
                     Details <Plus size={13} strokeWidth={2.4} />
                   </button>
@@ -394,11 +423,11 @@ export function Work() {
                     ))}
                   </ul>
                   <div className="wk-r mt-5 flex items-center gap-3" style={{ ["--i" as string]: 6 }}>
-                    <Progress i={i} />
+                    <WorkProgress i={i} register={setProg} />
                     <button className="wk-more" onClick={(e) => { e.stopPropagation(); setOpen(i); }} aria-label={`Details: ${pj.title}`}>
                       Details <Plus size={13} strokeWidth={2.4} />
                     </button>
-                    <Controls i={i} />
+                    <WorkControls i={i} n={n} go={go} />
                   </div>
                 </div>
               </>
@@ -415,7 +444,7 @@ export function Work() {
 /* 04 · CONTACT — in the dawn light that rises top-left                */
 /* ================================================================== */
 export function Dawn() {
-  const { layout } = useCoarse();
+  const layout = useLayoutState();
   const shape = layout?.zones.dawn.shape ?? "column";
   const compact = isCompact(layout, "dawn");
   const band = shape === "band";

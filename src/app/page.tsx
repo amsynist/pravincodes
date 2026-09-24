@@ -6,27 +6,31 @@ import FilmCanvas from "@/film/FilmCanvas";
 import Overlay from "@/film/Overlay";
 import { useFilmStart } from "@/film/react";
 import { CHAPTERS } from "@/film/timeline";
-import { Loader, Menu, Scrims, TopBar } from "@/components/Chrome";
+import { frameUrl } from "@/film/seq";
+import { Loader, Menu, TopBar } from "@/components/Chrome";
 import { Dawn, Intent, Signal, Still, Work } from "@/components/Chapters";
 import ScrollDock from "@/components/ScrollDock";
 
 const WIDE = "(min-width: 820px) and (min-aspect-ratio: 21/20)";
 const TALL = "(max-width: 819px), (max-aspect-ratio: 21/20)";
+/* The first frames the loader asks for (the opening of the hero) start downloading with the
+   HTML itself, before any script has run — only on the film page, not on /blog. */
+const FIRST = Array.from({ length: 12 }, (_, i) => i);
 
 export default function Home() {
-  // first frames start downloading with the HTML — only on the film page, not on /blog
-  preload("/seq/lg/001.webp", { as: "fetch", crossOrigin: "anonymous", media: WIDE });
-  preload("/seq/pt/001.webp", { as: "fetch", crossOrigin: "anonymous", media: TALL });
-  preload("/seq/pt2/001.avif", { as: "fetch", crossOrigin: "anonymous", media: TALL });
+  for (const i of FIRST) {
+    preload(frameUrl("lg", i), { as: "fetch", crossOrigin: "anonymous", media: WIDE, fetchPriority: i === 0 ? "high" : "auto" });
+    preload(frameUrl("pt", i), { as: "fetch", crossOrigin: "anonymous", media: TALL, fetchPriority: i === 0 ? "high" : "auto" });
+  }
+  preload(frameUrl("pt2", 0), { as: "fetch", crossOrigin: "anonymous", media: TALL });
   useFilmStart();
   const [menu, setMenu] = useState(false);
   const close = useCallback(() => setMenu(false), []);
 
   return (
     <>
-      {/* the film */}
+      {/* the film (scrims and streak tracers are painted into it); the overlay only draws in ?debug */}
       <FilmCanvas />
-      <Scrims />
       <Overlay />
 
       {/* chapters: fixed stages positioned in the clear space around the subject */}

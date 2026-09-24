@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Brain, Cloud, Code2, Database, Server, Sparkles, type LucideIcon } from "lucide-react";
-import { scrollToChapter, useCoarse, useTick, setRestVariant } from "@/film/react";
+import { scrollToChapter, useLayoutState, useTick, setRestVariant } from "@/film/react";
 import { CHAPTERS, VIDEO, clamp, ease } from "@/film/timeline";
 import { EDGE, TOP_SAFE, type Layout } from "@/film/camera";
 import { capabilityGroups, languages } from "@/data/portfolio";
@@ -408,7 +408,7 @@ function LTree({ p }: { p: LPlan }) {
 }
 
 export default function SkillTree() {
-  const { layout } = useCoarse();
+  const layout = useLayoutState();
   const [fontsReady, setFontsReady] = useState(0);
   useEffect(() => {
     document.fonts?.ready.then(() => setFontsReady((v) => v + 1));
