@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { CHAPTERS, VIDEO } from "@/film/timeline";
 import { Guard, chapterVis, scrollToChapter, useCoarse, useLayoutState, useTick } from "@/film/react";
 import { onLoadProgress } from "@/film/FilmCanvas";
@@ -12,6 +13,24 @@ import { Wordmark3D } from "./Chapters";
 /* Top bar — name + availability pill left, menu pill right            */
 /* Guarded against the FACE only (it may sit over hair at the top).    */
 /* ------------------------------------------------------------------ */
+/**
+ * Notes (blog) link — a minimal animated glyph: three lines of text where the last one keeps
+ * writing itself, a pen tip riding its end and blinking while it "thinks".
+ */
+function NotesLink() {
+  return (
+    <Link href="/blog" className="btn notes-btn !h-12 md:!h-14 !px-5 md:!px-6" aria-label="Notes — blog">
+      <svg className="notes-ico" viewBox="0 0 24 24" width="22" height="22" aria-hidden>
+        <path className="nl nl1" d="M4.5 6.5h15" pathLength={1} />
+        <path className="nl nl2" d="M4.5 12h11" pathLength={1} />
+        <path className="nl nl3" d="M4.5 17.5h8" pathLength={1} />
+        <circle className="nc" cx="12.5" cy="17.5" r="1.5" />
+      </svg>
+      <span className="notes-btn__label">Notes</span>
+    </Link>
+  );
+}
+
 export function TopBar({ onMenu }: { onMenu: () => void }) {
   // phones: the Menu button is a round icon whose border is the scroll-progress ring
   const ring = useRef<SVGCircleElement>(null);
@@ -40,6 +59,8 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           </div>
         </Guard>
         <Guard level="face" className="pointer-events-auto">
+          <div className="topbar-right flex items-center gap-1.5 sm:gap-3">
+          <NotesLink />
           <button onClick={onMenu} className="btn menu-btn !h-12 md:!h-14 !px-6 md:!px-7" aria-haspopup="dialog" aria-label="Menu">
             <span className="menu-btn__label">Menu</span>
             <svg width="22" height="14" viewBox="0 0 22 14" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
@@ -50,6 +71,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
               <circle ref={ring} cx="24" cy="24" r="23" pathLength={1} className="menu-btn__fill" />
             </svg>
           </button>
+          </div>
         </Guard>
       </div>
     </header>
@@ -143,6 +165,14 @@ export function Menu({ open, onClose }: { open: boolean; onClose: () => void }) 
               </button>
             </li>
           ))}
+          <li>
+            <Link href="/blog" className="group flex w-full items-baseline justify-between border-b border-[var(--line)] py-5 text-left">
+              <span className="head text-[40px] text-white/55 transition-transform duration-700 group-hover:translate-x-2 group-hover:text-white">
+                Notes
+              </span>
+              <span className="label !text-signal-hi">Blog ↗</span>
+            </Link>
+          </li>
         </ol>
         <div className="px-6 pb-8 md:px-8 space-y-4">
           <a href={`mailto:${contact.email}`} className="head text-[26px] link-u">{contact.email}</a>
@@ -179,7 +209,7 @@ export function Loader() {
   const dots = useRef<HTMLParagraphElement>(null);
   const ratioRef = useRef(0);
   const fontsRef = useRef(false);
-  const READY = 14 / VIDEO.count;
+  const READY = 0.045; // share of the reel fetched before the name locks (~17 of 381 frames, spread across it)
 
   useEffect(() => onLoadProgress((r) => { ratioRef.current = r; setRatio(r); }), []);
   // the hero wordmark is fitted with the real font — measuring before it arrives made the
@@ -296,7 +326,7 @@ export function Loader() {
           <p className="loader__meta">
             <span className="loader__role">AI · Full-stack engineer</span>
             <b className="tabular-nums">{pct}%</b>
-            <span className="loader__reel">Reel {VIDEO.count} fr</span>
+            <span className="loader__reel">Reel {(VIDEO.count - 1) * 2 + 1} fr</span>
           </p>
         </div>
       </div>

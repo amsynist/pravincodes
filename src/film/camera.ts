@@ -46,11 +46,19 @@ export function camRect(vp: Viewport, ax: number, fy = 0.4): CamRect {
  */
 export const PT_X0 = 288 / 1920;
 export const PT_W = 1094 / 1920;
-export const portraitCropFits = (vp: Viewport) => vp.w <= PT_W * VIDEO.width * cover(vp);
+/**
+ * Phones: the film is drawn at 75% of the screen height (pinned to the top, its bottom
+ * edge fading into the page) so the subject is smaller and the under-chin band — where
+ * all the text lives — gets ~25% more room.
+ */
+export const PHONE_ZOOM = 0.75;
+const portraitScale = (vp: Viewport) => cover(vp) * PHONE_ZOOM;
+export const portraitCropFits = (vp: Viewport) => vp.w <= PT_W * VIDEO.width * portraitScale(vp);
 
-/** Portrait: still full-bleed, panned so the face stays centred as he moves. */
+/** Portrait: zoomed out (see PHONE_ZOOM), pinned to the top, panned so the face stays centred as he moves. */
 export function faceCam(vp: Viewport, frame: number): CamRect {
-  const k = cover(vp);
+  // zoomed out, but never narrower than the screen (the sides stay full-bleed)
+  const k = Math.max(portraitScale(vp), vp.w / VIDEO.width);
   const dw = VIDEO.width * k;
   const dh = VIDEO.height * k;
   const fcx = camTrackAt(frame);

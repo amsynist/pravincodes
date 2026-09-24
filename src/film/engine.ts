@@ -64,14 +64,61 @@ class Engine {
     this.targetY = this.y = window.scrollY;
     window.addEventListener("scroll", this.onScroll, { passive: true });
     for (const ev of ["wheel", "touchstart", "keydown"] as const) window.addEventListener(ev, this.cancelJump, { passive: true });
+    window.addEventListener("touchstart", () => (this.touching = true), { passive: true });
+    const up = () => {
+      this.touching = false;
+      this.lastInputAt = performance.now(); // momentum may follow — idle is measured from here
+    };
+    window.addEventListener("touchend", up, { passive: true });
+    window.addEventListener("touchcancel", up, { passive: true });
     window.addEventListener("resize", this.onResize);
     this.loop(performance.now());
   }
 
   private onScroll = () => {
-    this.targetY = window.scrollY;
+    const y = window.scrollY;
+    // user scrolling (not our own eased jump): remember direction + time for snapping
+    if (!this.jump && y !== this.targetY) {
+      this.lastDir = y > this.targetY ? 1 : -1;
+      this.lastInputAt = performance.now();
+      this.idlePending = true;
+    }
+    this.targetY = y;
     this.settle = 60;
   };
+
+  /* ---- snapping: fires once when the visitor has stopped scrolling (finger up, wheel quiet) ---- */
+  private lastDir = 1;
+  private lastInputAt = 0;
+  private idlePending = false;
+  private touching = false;
+  private idleListeners = new Set<(y: number, dir: number) => void>();
+  onIdle(fn: (y: number, dir: number) => void) {
+    this.idleListeners.add(fn);
+    return () => {
+      this.idleListeners.delete(fn);
+    };
+  }
+  private checkIdle(t: number) {
+    if (!this.idlePending || this.jump || this.touching) return;
+    // trackpads/phones keep firing momentum scroll events; wait until they've really stopped
+    if (t - this.lastInputAt < 170) return;
+    this.idlePending = false;
+    this.idleListeners.forEach((fn) => fn(window.scrollY, this.lastDir));
+  }
+
+  /** Eased glide to an absolute scroll position (snaps, arrows, menu). */
+  jumpTo(to: number) {
+    to = Math.round(Math.max(0, to));
+    const from = window.scrollY;
+    if (reduceMotion() || Math.abs(to - from) < 2) {
+      window.scrollTo(0, to);
+      return;
+    }
+    const dist = Math.abs(to - from) / (this.coarse.unit * 100 || 800); // in screens
+    this.jump = { from, to, t0: performance.now(), dur: Math.min(1400, 420 + dist * 170) };
+    this.settle = 60;
+  }
 
   /** Wake the loop (e.g. a decoded frame arrived for the current position). */
   poke() {
@@ -128,15 +175,7 @@ class Engine {
     this.jump = null;
   };
   scrollToChapter(id: ChapterId, at = 0.18) {
-    const to = Math.round(this.chapterStart(id, at));
-    const from = window.scrollY;
-    if (reduceMotion() || Math.abs(to - from) < 2) {
-      window.scrollTo(0, to);
-      return;
-    }
-    const dist = Math.abs(to - from) / (this.coarse.unit * 100 || 800); // in screens
-    this.jump = { from, to, t0: performance.now(), dur: Math.min(1500, 520 + dist * 150) };
-    this.settle = 60;
+    this.jumpTo(this.chapterStart(id, at));
   }
   private stepJump(t: number) {
     const j = this.jump;
@@ -202,11 +241,17 @@ class Engine {
     const dt = Math.min(64, t - (this.lastT || t));
     this.lastT = t;
     this.stepJump(t);
+    this.checkIdle(t);
     // touch: read the scroll position at frame time (scroll events can land after rAF
     // in the same frame, which made the film step 0 / 2 / 0 / 2 px — a visible judder)
     if (this.touch) {
       const sy = window.scrollY;
       if (sy !== this.targetY) {
+        if (!this.jump) {
+          this.lastDir = sy > this.targetY ? 1 : -1;
+          this.lastInputAt = performance.now();
+          this.idlePending = true;
+        }
         this.targetY = sy;
         this.settle = 60;
       }

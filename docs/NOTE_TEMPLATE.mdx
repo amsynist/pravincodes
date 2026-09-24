@@ -1,0 +1,51 @@
+---
+title: "Your note title"
+description: "One or two sentences — shown under the title and on the Notes list."
+date: 2026-10-01
+tags: ["Topic", "Tool", "Another tag"]
+draft: true   # drafts show in `npm run dev` only; delete this line to publish
+---
+
+Opening paragraph: what this note gets you, and who it's for.
+
+## A section (numbered automatically)
+
+Normal Markdown works: **bold**, *italic*, `inline code`, [links](https://example.com), lists, tables.
+
+```bash title="setup.sh"
+# shell blocks get a $ on each command line — never copied
+pip install something
+python run.py \
+  --flag value
+```
+
+```python title="example.py" {3}
+import torch
+# the {3} after the title highlights line 3
+x = torch.ones(3)
+```
+
+<Tabs group="gpu" labels={["RTX 5090 · 32 GB", "RTX PRO 6000 · 96 GB"]}>
+<Tab>
+
+Commands for the first card.
+
+</Tab>
+<Tab>
+
+Commands for the second card.
+
+</Tab>
+</Tabs>
+
+<Note title="Optional title">A blue note.</Note>
+<Tip>A green tip.</Tip>
+<Warn>An amber warning.</Warn>
+
+<Specs items={[["Label", "Value"], ["Another", "Value"]]} />
+
+<Step n={1} title="A numbered tutorial step" />
+
+| Column | Column |
+| --- | --- |
+| cell | cell |

@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { ArrowLeft, ArrowRight, ArrowUpRight, BrainCircuit, Plus, Database, Infinity, Layers, MonitorSmartphone, Server } from "lucide-react";
-import { Beat, Lines, Stage, isCompact, scrollToChapter, useCoarse, useTick } from "@/film/react";
+import { Beat, Lines, Stage, W_A, W_SPAN, isCompact, scrollToChapter, useCoarse, useTick } from "@/film/react";
 import { clamp, ease } from "@/film/timeline";
 import { contact, identity, industries, projects } from "@/data/portfolio";
 import SkillTree from "./SkillTree";
@@ -261,8 +262,6 @@ export function Signal() {
 /* ================================================================== */
 /* 03 · WORK — he turns away; the projects take the left side          */
 /* ================================================================== */
-const W_A = 0.06;
-const W_SPAN = 0.9;
 export function Work() {
   const { layout } = useCoarse();
   const shape = layout?.zones.work.shape ?? "column";
@@ -432,10 +431,10 @@ export function Dawn() {
     // phones / short bands: one screen — heading, email and links together (no paging)
     return (
       <Stage id="dawn" align="center">
-        <Beat at={[0.1, 1]} className="dawn-c">
+        <Beat at={[0.02, 1]} className="dawn-c">
           <p className="dawn-label label">Contact</p>
           <h2 className="dawn-h head mt-2 !font-semibold">
-            <Lines at={0.14} lines={["Let’s build", "what’s next."]} />
+            <Lines at={0.04} lines={["Let’s build", "what’s next."]} />
           </h2>
           <a href={`mailto:${contact.email}`} className="dawn-mail btn btn--light mt-4 w-full !justify-between">
             {contact.email} <ArrowUpRight size={18} className="arr" />
@@ -446,6 +445,9 @@ export function Dawn() {
                 {l.label}
               </a>
             ))}
+            <Link href="/blog" className="pill !text-signal-hi hover:!text-white">
+              Notes ↗
+            </Link>
           </div>
           {credit}
         </Beat>
@@ -455,16 +457,16 @@ export function Dawn() {
   return (
     <Stage id="dawn" align="center">
       <div className={band ? "grid grid-cols-12 gap-10 items-end" : ""}>
-        <Beat at={[0.1, 1]} className={band ? "col-span-7" : ""}>
+        <Beat at={[0.02, 1]} className={band ? "col-span-7" : ""}>
           <p className="label">Contact</p>
           <h2 className="head mt-4 text-[clamp(36px,5vw,84px)] !font-semibold">
-            <Lines at={0.14} lines={["Let’s build", "what’s next."]} />
+            <Lines at={0.04} lines={["Let’s build", "what’s next."]} />
           </h2>
           <p className="body mt-5 max-w-[42ch]">
             Have a product that needs to listen, reason or scale? I&rsquo;m taking on a small number of AI builds and platform roles.
           </p>
         </Beat>
-        <Beat at={[0.24, 1]} className={band ? "col-span-5" : "mt-8"}>
+        <Beat at={[0.1, 1]} className={band ? "col-span-5" : "mt-8"}>
           <a href={`mailto:${contact.email}`} className="btn btn--light w-full sm:w-auto !justify-between">
             {contact.email} <ArrowUpRight size={18} className="arr" />
           </a>
@@ -474,6 +476,9 @@ export function Dawn() {
                 {l.label}
               </a>
             ))}
+            <Link href="/blog" className="pill !text-signal-hi hover:!text-white">
+              Notes ↗
+            </Link>
           </div>
           {credit}
         </Beat>

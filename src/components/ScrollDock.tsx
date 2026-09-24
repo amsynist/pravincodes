@@ -71,13 +71,15 @@ export default function ScrollDock() {
   // phones: sit in the top bar row, just left of the Menu button (the only strip the face never reaches)
   useLayoutEffect(() => {
     if (!stack) return;
-    const menu = document.querySelector<HTMLElement>("header .menu-btn");
+    // sit left of the whole right-hand group (Notes + Menu)
+    const menu = document.querySelector<HTMLElement>("header .topbar-right") ?? document.querySelector<HTMLElement>("header .menu-btn");
     const dock = root.current?.closest<HTMLElement>(".dock");
     if (!menu || !dock) return;
     const place = () => {
       const r = menu.getBoundingClientRect();
-      dock.style.setProperty("--dock-right", `${Math.round(innerWidth - r.left + 8)}px`);
-      dock.style.setProperty("--dock-top", `${Math.round(r.top + r.height / 2 - ring / 2)}px`);
+      dock.style.setProperty("--dock-right", `${Math.round(innerWidth - r.left + 6)}px`);
+      const m = document.querySelector<HTMLElement>("header .menu-btn")?.getBoundingClientRect() ?? r;
+      dock.style.setProperty("--dock-top", `${Math.round(m.top + m.height / 2 - ring / 2)}px`);
     };
     place();
     const ro = new ResizeObserver(place);

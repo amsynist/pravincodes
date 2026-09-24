@@ -1,0 +1,161 @@
+---
+title: "Run MiniMax H3 locally on an RTX 5090 or RTX PRO 6000"
+description: "Pick your GPU, download the right files, run it in ComfyUI — plus a ready workflow that takes reference images, a video and your own LoRAs."
+date: 2026-09-24
+tags: ["AI Infra", "MiniMax H3", "ComfyUI", "Local models"]
+---
+
+MiniMax H3 generates video **with native stereo audio** from text, keyframes or references. Here's the shortest path to running it in ComfyUI on one card.
+
+<Specs items={[
+  ["Generator", "33B · FL2VA (text/frames) + Ref2VA (references)"],
+  ["Text encoder", "Qwen3-VL-32B"],
+  ["Output", "4–15 s · 24 fps · stereo"],
+  ["Native size", "1344 × 768"],
+]} />
+
+## Pick your GPU
+
+Choose once — every block below follows your pick.
+
+<Tabs group="gpu" labels={["RTX 5090 · 32 GB", "RTX PRO 6000 · 96 GB"]}>
+<Tab>
+
+**Pruned INT8** — ComfyUI's default build. The generator and encoder don't fit in 32 GB together, so ComfyUI loads them in turn.
+
+| File | Size |
+| --- | --- |
+| Generator · pruned INT8 | 21.0 GB |
+| Text encoder · NVFP4 | 15.7 GB |
+
+</Tab>
+<Tab>
+
+**The full model — unpruned BF16.** 96 GB holds it with the encoder, and everything stays loaded between runs.
+
+| File | Size |
+| --- | --- |
+| Generator · full BF16 | 66.3 GB |
+| Text encoder · NVFP4 | 15.7 GB |
+
+Want more headroom? Swap in the unpruned INT8 generator (34.0 GB).
+
+</Tab>
+</Tabs>
+
+<Note>
+Both cards are Blackwell, which the NVFP4 encoder needs. All files are from <a href="https://huggingface.co/Comfy-Org/MiniMax-H3">Comfy-Org/MiniMax-H3</a>.
+</Note>
+
+## Install ComfyUI
+
+```bash title="install.sh"
+git clone https://github.com/comfyanonymous/ComfyUI.git
+cd ComfyUI
+python3 -m venv .venv && source .venv/bin/activate
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+pip install -r requirements.txt "huggingface_hub[cli]"
+```
+
+## Download the models
+
+Files land straight in the right `models/` folders.
+
+<Tabs group="gpu" labels={["RTX 5090 · 32 GB", "RTX PRO 6000 · 96 GB"]}>
+<Tab>
+
+```bash title="download-5090.sh  ·  ≈ 60 GB"
+hf download Comfy-Org/MiniMax-H3 \
+  diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors \
+  diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors \
+  text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors \
+  vae/minimax_h3_video_vae_int8_convrot.safetensors \
+  vae/minimax_h3_audio_vae_fp32.safetensors \
+  loras/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors \
+  --local-dir models
+hf download lightx2v/Minimax-h3-Turbo minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors --local-dir models/loras
+```
+
+</Tab>
+<Tab>
+
+```bash title="download-pro6000.sh  ·  ≈ 155 GB"
+hf download Comfy-Org/MiniMax-H3 \
+  diffusion_models/minimax_h3_fl2va_bf16.safetensors \
+  diffusion_models/minimax_h3_ref2va_bf16.safetensors \
+  text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors \
+  vae/minimax_h3_video_vae_int8_convrot.safetensors \
+  vae/minimax_h3_audio_vae_fp32.safetensors \
+  loras/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors \
+  --local-dir models
+hf download lightx2v/Minimax-h3-Turbo minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors --local-dir models/loras
+```
+
+</Tab>
+</Tabs>
+
+## Launch
+
+<Tabs group="gpu" labels={["RTX 5090 · 32 GB", "RTX PRO 6000 · 96 GB"]}>
+<Tab>
+
+```bash title="run-5090.sh"
+python main.py
+```
+
+Out of memory? Relaunch with `--lowvram`, or turn on the turbo LoRA.
+
+</Tab>
+<Tab>
+
+```bash title="run-pro6000.sh"
+python main.py --highvram
+```
+
+</Tab>
+</Tabs>
+
+Open `http://127.0.0.1:8188`.
+
+## Generate
+
+**From text or a first frame:** Workflow → Browse Templates → Video → **MiniMax H3 T2V** or **I2V**.
+
+**From your own references** — images, a video clip and LoRAs — use this workflow. Drag the file onto the ComfyUI canvas:
+
+<Download href="/blog/minimax-h3/minimax_h3_refs_images_video_loras.json" title="MiniMax H3 — images + video + LoRAs" meta="ComfyUI workflow · built on the official reference-to-video template" />
+
+- **Images** — upload into *Reference image 1 / 2*. Plug more Load Image nodes into the empty `ref_image` slots (up to 9).
+- **Video** — upload a short clip into *Reference video*. No video? Select both video nodes and press **Ctrl+B**.
+- **LoRAs** — drop files in `models/loras/`, pick one in *Your LoRA 1 / 2*, then **Ctrl+B** to switch it on.
+- **PRO 6000** — set *Load Diffusion Model* to `minimax_h3_ref2va_bf16.safetensors`.
+
+Name references by tag in the prompt, in the order they're connected:
+
+```text title="prompt"
+Use <Picture 1> as the main character — keep the face and outfit.
+Use <Picture 2> for the location and colour palette.
+Copy the camera move and pace from <Video 1>.
+Shot: she walks toward camera, stops, looks up as the light shifts.
+Audio: footsteps, room tone, one soft line of dialogue, no music.
+```
+
+<Tip>
+Size is set by megapixels in *Resolution Selector*: 0.4 = 864 × 480 (fast), 0.98 = 1344 × 768 (native). Keep reference clips short — every reference rides along each sampling step.
+</Tip>
+
+## My results
+
+Same prompt and seed on both cards — filling this in as I test.
+
+| Card | Build | 5 s @ 1344×768 | Peak VRAM |
+| --- | --- | --- | --- |
+| RTX 5090 | Pruned INT8 | — | — |
+| RTX 5090 | Pruned INT8 + turbo | — | — |
+| RTX PRO 6000 | Full BF16 | — | — |
+
+## Sources
+
+- <a href="https://huggingface.co/MiniMaxAI/MiniMax-H3">MiniMax-H3 model card</a>
+- <a href="https://docs.comfy.org/tutorials/video/minimax/minimax-h3-native">ComfyUI · MiniMax H3 native workflows</a>
+- <a href="https://huggingface.co/Comfy-Org/MiniMax-H3">Comfy-Org/MiniMax-H3 files</a>

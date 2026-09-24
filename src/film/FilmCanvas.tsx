@@ -69,7 +69,7 @@ function resetHq(set: "" | "pt2") {
 
 export function onLoadProgress(cb: (ratio: number) => void) {
   store.listeners.add(cb);
-  cb(store.set ? store.fetched / VIDEO.count : 0);
+  cb(store.set ? store.fetched / countOf(store.set) : 0);
   return () => {
     store.listeners.delete(cb);
   };
@@ -88,6 +88,11 @@ function order(n: number) {
   return out;
 }
 
+/* The reel: 191 real frames plus an optical-flow in-between after each (381 total) for the
+   full-quality sets — a real picture every ~22–48 px of scroll. The slow-connection set keeps
+   the 191 originals. Positions everywhere else stay in real-frame units (the face analysis). */
+const SUB: Record<SetName, number> = { lg: 2, pt: 2, pt2: 2, sm: 1 };
+const countOf = (set: SetName | "") => (set ? (VIDEO.count - 1) * SUB[set] + 1 : VIDEO.count);
 const url = (set: string, i: number) => `/seq/${set}/${String(i + 1).padStart(3, "0")}.${set === "pt2" ? "avif" : "webp"}`;
 
 /* Phones: "pt2" = the portrait crop upscaled 1.5× (Lanczos + light sharpen) as AVIF, so a
@@ -117,9 +122,10 @@ function load(set: SetName, limit: number) {
   store.bitmaps.clear();
   store.pending.clear();
   store.set = set;
-  store.blobs = new Array(VIDEO.count).fill(null);
+  const N = countOf(set);
+  store.blobs = new Array(N).fill(null);
   store.fetched = 0;
-  const queue = order(VIDEO.count);
+  const queue = order(N);
   let active = 0;
   const pump = () => {
     while (active < 6 && queue.length) {
@@ -133,7 +139,7 @@ function load(set: SetName, limit: number) {
           if (store.set !== set) return;
           store.blobs[i] = blob;
           store.fetched++;
-          store.listeners.forEach((l) => l(store.fetched / VIDEO.count));
+          store.listeners.forEach((l) => l(store.fetched / N));
           // make sure the frame we're sitting on gets decoded as soon as its bytes arrive
           getEngine().poke();
           pump();
@@ -144,7 +150,7 @@ function load(set: SetName, limit: number) {
 }
 
 function decode(i: number) {
-  if (i < 0 || i >= VIDEO.count) return;
+  if (i < 0 || i >= countOf(store.set)) return;
   if (store.bitmaps.has(i) || store.pending.has(i) || store.pending.size >= 4) return;
   const blob = store.blobs[i];
   if (!blob) return;
@@ -163,7 +169,7 @@ function decode(i: number) {
 function prefetch(center: number, dir: number) {
   decode(center);
   const ahead = dir >= 0 ? 1 : -1;
-  const reach = Math.min(14, store.limit - 5); // never prefetch more than the budget can keep
+  const reach = Math.min(20, store.limit - 5); // never prefetch more than the budget can keep
   for (let d = 1; d <= reach && store.pending.size < 4; d++) {
     decode(center + ahead * d);
     if (d <= 4) decode(center - ahead * d);
@@ -206,7 +212,7 @@ const BG = "#04050c";
 export default function FilmCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
   const layout = useLayoutState();
-  const last = useRef({ key: "", frame: 0, changedAt: 0, dir: 1, shown: -1 });
+  const last = useRef({ key: "", frame: 0, pos: -1, changedAt: 0, dir: 1, shown: -1, lastT: 0, ema: 16.7, noBlend: false });
   const scale = useRef(1);
 
   useEffect(() => {
@@ -229,7 +235,7 @@ export default function FilmCanvas() {
       c.height = Math.round(h * scale.current);
       last.current.key = "";
       // decoded-frame budget: lg 8.3 MB, pt 4.7 MB, sm 2 MB per frame
-      load(set, set === "lg" ? 26 : set === "pt" ? 24 : 48);
+      load(set, set === "lg" ? 26 : set === "pt" ? 30 : 48);
       getEngine().poke();
     };
     if (slow) {
@@ -250,33 +256,74 @@ export default function FilmCanvas() {
   useTick((t) => {
     const c = ref.current;
     if (!c) return;
-    const i = clamp(Math.round(t.frame), 0, VIDEO.count - 1);
     const L = last.current;
     const cam = t.cam;
     const camKey = `${cam.dw.toFixed(1)}|${cam.ox.toFixed(1)}|${cam.oy.toFixed(1)}|${c.width}`;
-    if (i !== L.frame || t.moving) L.changedAt = t.time;
+    /* Sub-frame blending. The reel is 191 frames stretched over ~14 screens of scroll — one
+       new picture every 45–95 px — so a slow scroll showed a new frame only a few times a
+       second (stop-motion, however smooth the page). Drawing frame i, then frame i+1 on top
+       at the fractional position, makes the picture move continuously with every pixel. */
+    const N = countOf(store.set);
+    const f = clamp(t.frame * (store.set ? SUB[store.set] : 1), 0, N - 1); // position in this set's frames
+    const i0 = Math.floor(f);
+    const i1 = Math.min(N - 1, i0 + 1);
+    const a = Math.round((f - i0) * 24) / 24; // 1/24 steps: a redraw every ~2–4 px of scroll
+    const i = a >= 0.5 ? i1 : i0;
+    const pos = i0 + a;
+    // adaptive: watch real frame pacing while the film moves; a device that can't hold ~45fps
+    // with two layers drops back to single frames (and gets it back once it recovers)
+    const dtick = t.time - (L.lastT || t.time);
+    L.lastT = t.time;
+    const speed = Math.abs(pos - (L.pos < 0 ? pos : L.pos)); // frames advanced this tick
+    if (pos !== L.pos && dtick > 0 && dtick < 200) {
+      L.ema = L.ema * 0.92 + dtick * 0.08;
+      if (!L.noBlend && L.ema > 22) L.noBlend = true;
+      else if (L.noBlend && L.ema < 17) L.noBlend = false;
+    }
+    if (pos !== L.pos || t.moving) L.changedAt = t.time;
     if (i !== L.frame) L.dir = i > L.frame ? 1 : -1;
+    L.pos = pos;
     prefetch(i, L.dir);
     L.frame = i;
-    // "resting" = the frame hasn't changed for a moment → refine to the sharp frame
+    // "resting" = the film hasn't moved for a moment → refine to the sharp frames
     const resting = t.time - L.changedAt > 140;
-    let bm: ImageBitmap | null = null;
+    // fast flicks (≥ ~0.8 frame per tick) don't show the in-between anyway — skip the second layer
+    const blend = a > 0.02 && a < 0.98 && !L.noBlend && speed < 0.8;
+    let A: ImageBitmap | null = null;
+    let B: ImageBitmap | null = null;
+    let alpha = 0;
     let src = "";
     if (resting && hq.set) {
-      wantHq(i);
-      const h = hq.bitmaps.get(i);
-      if (h) {
-        bm = h;
+      const k0 = blend ? i0 : i;
+      wantHq(k0);
+      if (blend) wantHq(i1);
+      const h0 = hq.bitmaps.get(k0);
+      const h1 = blend ? hq.bitmaps.get(i1) : null;
+      if (h0 && (!blend || h1)) {
+        A = h0;
+        B = h1 ?? null;
+        alpha = blend ? a : 0;
+        src = `hq${k0}+${blend ? i1 : ""}@${alpha}`;
         L.shown = i;
-        src = `hq${i}`;
       }
     }
-    if (!bm) {
-      const [f, at] = nearest(i, L.dir, L.shown);
-      if (!f) return;
-      bm = f;
-      L.shown = at;
-      src = `${store.set}${at}`;
+    if (!A) {
+      const f0 = store.bitmaps.get(blend ? i0 : i);
+      const f1 = blend ? store.bitmaps.get(i1) : null;
+      if (f0 && (!blend || f1)) {
+        A = f0;
+        B = f1 ?? null;
+        alpha = blend ? a : 0;
+        src = `${store.set}${blend ? i0 : i}+${blend ? i1 : ""}@${alpha}`;
+        L.shown = i;
+      } else {
+        // a neighbour isn't decoded yet: show the closest single frame (never stepping backwards)
+        const [n, at] = nearest(i, L.dir, L.shown);
+        if (!n) return;
+        A = n;
+        L.shown = at;
+        src = `${store.set}${at}`;
+      }
     }
     // while scrubbing, bilinear filtering is plenty (and cheaper); at rest, the high-quality filter
     const q = resting ? "high" : "low";
@@ -285,13 +332,24 @@ export default function FilmCanvas() {
     L.key = key;
     const ctx = c.getContext("2d", { alpha: false });
     if (!ctx) return;
-    draw(ctx, bm, cam, scale.current, t.layout.vp.w, t.layout.vp.h, store.set === "pt" || store.set === "pt2", q);
+    draw(ctx, A, B, alpha, cam, scale.current, t.layout.vp.w, t.layout.vp.h, store.set === "pt" || store.set === "pt2", q);
   });
 
   return <canvas ref={ref} className="film-canvas" aria-hidden />;
 }
 
-function draw(ctx: CanvasRenderingContext2D, img: ImageBitmap, cam: CamRect, s: number, vw: number, vh: number, crop: boolean, q: ImageSmoothingQuality) {
+function draw(
+  ctx: CanvasRenderingContext2D,
+  img: ImageBitmap,
+  next: ImageBitmap | null,
+  alpha: number,
+  cam: CamRect,
+  s: number,
+  vw: number,
+  vh: number,
+  crop: boolean,
+  q: ImageSmoothingQuality,
+) {
   ctx.setTransform(s, 0, 0, s, 0, 0);
   // full-bleed: the frame covers the viewport, so it only needs a clear if it doesn't
   if (cam.ox > 0 || cam.oy > 0 || cam.ox + cam.dw < vw || cam.oy + cam.dh < vh) {
@@ -300,6 +358,23 @@ function draw(ctx: CanvasRenderingContext2D, img: ImageBitmap, cam: CamRect, s: 
   }
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = q;
-  if (crop) ctx.drawImage(img, cam.ox + PT_X0 * cam.dw, cam.oy, PT_W * cam.dw, cam.dh);
-  else ctx.drawImage(img, cam.ox, cam.oy, cam.dw, cam.dh);
+  const put = (b: ImageBitmap) =>
+    crop ? ctx.drawImage(b, cam.ox + PT_X0 * cam.dw, cam.oy, PT_W * cam.dw, cam.dh) : ctx.drawImage(b, cam.ox, cam.oy, cam.dw, cam.dh);
+  put(img);
+  if (next && alpha > 0) {
+    ctx.globalAlpha = alpha;
+    put(next);
+    ctx.globalAlpha = 1;
+  }
+  // phones (zoomed-out film): melt the frame's bottom edge into the page so there's no seam
+  const bottom = cam.oy + cam.dh;
+  if (bottom < vh - 1) {
+    const fade = Math.min(220, cam.dh * 0.3);
+    const g = ctx.createLinearGradient(0, bottom - fade, 0, bottom);
+    g.addColorStop(0, "rgba(4,5,12,0)");
+    g.addColorStop(0.55, "rgba(4,5,12,0.72)");
+    g.addColorStop(1, BG);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, bottom - fade, vw, fade + 1);
+  }
 }
