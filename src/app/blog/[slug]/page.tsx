@@ -6,6 +6,7 @@ import { fmtDate, getPost, getPosts, pad3 } from "@/lib/blog";
 import { renderMdx, tocFrom } from "@/components/blog/Mdx";
 import Toc from "@/components/blog/Toc";
 import Progress from "@/components/blog/Progress";
+import PostCover from "@/components/blog/PostArt";
 
 export function generateStaticParams() {
   return getPosts().map((p) => ({ slug: p.slug }));
@@ -29,8 +30,11 @@ export default async function NotePage({ params }: { params: Promise<{ slug: str
   const older = all[i + 1];
 
   return (
-    <main className="note">
+    <main className="note" style={{ ["--acc" as string]: post.accent }}>
       <Progress />
+      <section className="note-hero">
+        {/* the card's cover, pre-blurred (cover-blur.webp is ~1 KB) and stretched behind the header */}
+        <div className="note-hero__bg" style={{ backgroundImage: `url(${post.coverBlur})` }} aria-hidden />
       <header className="note-head">
         <Link href="/blog" className="note-back">
           <ArrowLeft size={15} aria-hidden /> All notes
@@ -48,8 +52,11 @@ export default async function NotePage({ params }: { params: Promise<{ slug: str
             <span key={t} className="note-tag">{t}</span>
           ))}
         </p>
-        <span className="note-head__num" aria-hidden>{pad3(post.number)}</span>
+        <figure className="note-plate" aria-hidden>
+          <PostCover src={post.cover} sizes="(max-width: 999px) 100vw, 460px" priority />
+        </figure>
       </header>
+      </section>
 
       <div className="note-grid">
         <aside className="note-side">

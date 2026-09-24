@@ -1,0 +1,151 @@
+---
+title: "Run FLUX.2 [dev] locally on an RTX 5090 or RTX PRO 6000"
+description: "Pick your GPU, grab the right weights and generate in ComfyUI — multi-reference editing included, plus an 8-step turbo switch."
+date: 2026-09-22
+tags: ["Image models", "FLUX.2", "ComfyUI", "Local models"]
+accent: "#f0a66e"
+---
+
+FLUX.2 [dev] is Black Forest Labs' 32B open-weight image model. It generates and edits from several reference images at once. Here's the shortest path to running it in ComfyUI on one card.
+
+<Specs items={[
+  ["Generator", "32B · text-to-image + multi-reference edit"],
+  ["Text encoder", "Mistral Small 3 · 24B"],
+  ["Output", "up to 4 MP"],
+  ["Licence", "FLUX [dev] non-commercial"],
+]} />
+
+## Pick your GPU
+
+Choose once — every block below follows your pick.
+
+<Tabs group="gpu" labels={["RTX 5090 · 32 GB", "RTX PRO 6000 · 96 GB"]}>
+<Tab>
+
+**NVFP4** — BFL's 4-bit build, made for Blackwell. The generator and encoder don't fit together, so ComfyUI loads them in turn.
+
+| File | Size |
+| --- | --- |
+| Generator · NVFP4 mixed | 22.8 GB |
+| Text encoder · FP8 | 18.0 GB |
+
+The template's default `flux2_dev_fp8mixed` (35.5 GB) also runs — ComfyUI offloads what doesn't fit, so it's slower.
+
+</Tab>
+<Tab>
+
+**The full model — BF16.** With the FP8 encoder it's ≈ 82 GB, so both stay loaded between runs.
+
+| File | Size |
+| --- | --- |
+| Generator · full BF16 | 64.4 GB |
+| Text encoder · FP8 | 18.0 GB |
+
+</Tab>
+</Tabs>
+
+<Note>
+NVFP4 only runs at full speed on a PyTorch build for CUDA 13 (`cu130`), so the install below uses that one.
+</Note>
+
+## Install ComfyUI
+
+```bash title="install.sh"
+git clone https://github.com/comfyanonymous/ComfyUI.git
+cd ComfyUI
+python3 -m venv .venv && source .venv/bin/activate
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
+pip install -r requirements.txt "huggingface_hub[cli]"
+```
+
+## Download the models
+
+Run from the `ComfyUI` folder. Every file lands in the right `models/` folder.
+
+<Tabs group="gpu" labels={["RTX 5090 · 32 GB", "RTX PRO 6000 · 96 GB"]}>
+<Tab>
+
+```bash title="download-5090.sh  ·  ≈ 44 GB"
+hf download black-forest-labs/FLUX.2-dev-NVFP4 flux2-dev-nvfp4-mixed.safetensors --local-dir models/diffusion_models
+hf download Comfy-Org/flux2-dev split_files/text_encoders/mistral_3_small_flux2_fp8.safetensors --local-dir models/.hf
+hf download black-forest-labs/FLUX.2-small-decoder full_encoder_small_decoder.safetensors --local-dir models/vae
+hf download ByteZSzn/Flux.2-Turbo-ComfyUI Flux_2-Turbo-LoRA_comfyui.safetensors --local-dir models/loras
+mv models/.hf/split_files/text_encoders/* models/text_encoders/
+```
+
+</Tab>
+<Tab>
+
+The full weights are gated: accept the licence on the <a href="https://huggingface.co/black-forest-labs/FLUX.2-dev">FLUX.2-dev page</a>, then log in.
+
+```bash title="download-pro6000.sh  ·  ≈ 85 GB"
+hf auth login
+hf download black-forest-labs/FLUX.2-dev flux2-dev.safetensors --local-dir models/diffusion_models
+hf download Comfy-Org/flux2-dev split_files/text_encoders/mistral_3_small_flux2_fp8.safetensors --local-dir models/.hf
+hf download black-forest-labs/FLUX.2-small-decoder full_encoder_small_decoder.safetensors --local-dir models/vae
+hf download ByteZSzn/Flux.2-Turbo-ComfyUI Flux_2-Turbo-LoRA_comfyui.safetensors --local-dir models/loras
+mv models/.hf/split_files/text_encoders/* models/text_encoders/
+```
+
+</Tab>
+</Tabs>
+
+## Launch
+
+<Tabs group="gpu" labels={["RTX 5090 · 32 GB", "RTX PRO 6000 · 96 GB"]}>
+<Tab>
+
+```bash title="run-5090.sh"
+python main.py
+```
+
+</Tab>
+<Tab>
+
+```bash title="run-pro6000.sh"
+python main.py --highvram
+```
+
+</Tab>
+</Tabs>
+
+Open `http://127.0.0.1:8188`.
+
+## Generate
+
+Workflow → Browse Templates → Image → **Flux.2 Dev** (with references) or **Flux.2 Dev Text to Image**. Then point three loaders at your files:
+
+- **Load Diffusion Model** — `flux2-dev-nvfp4-mixed` on the 5090, `flux2-dev` on the PRO 6000.
+- **Load CLIP** — `mistral_3_small_flux2_fp8`.
+- **Load VAE** — already `full_encoder_small_decoder`.
+
+Defaults are 20 steps at guidance 4. Flip the template's **turbo** switch to true and it drops to 8 steps using the turbo LoRA.
+
+**References:** each Load Image feeds a *ReferenceLatent* node. Chain another pair for every extra image, then say in the prompt what each one is for:
+
+```text title="prompt"
+The woman from the first image, wearing the jacket from the second image.
+Standing on a rain-wet street at night, neon signs reflected in puddles.
+85 mm portrait, shallow depth of field, soft rim light.
+```
+
+<Tip>
+Start at 1 MP to find the shot, then raise the size for the keeper. On the 5090 the first run is slow while both models load — after that only the generator stays on the card.
+</Tip>
+
+## My results
+
+Same prompt and seed on both cards — filling this in as I test.
+
+| Card | Build | 1 MP · 20 steps | 1 MP · turbo 8 | Peak VRAM |
+| --- | --- | --- | --- | --- |
+| RTX 5090 | NVFP4 mixed | — | — | — |
+| RTX 5090 | FP8 mixed | — | — | — |
+| RTX PRO 6000 | Full BF16 | — | — | — |
+
+## Sources
+
+- <a href="https://docs.comfy.org/tutorials/flux/flux-2-dev">ComfyUI · FLUX.2 Dev native workflow</a>
+- <a href="https://huggingface.co/black-forest-labs/FLUX.2-dev-NVFP4">FLUX.2-dev-NVFP4 weights</a>
+- <a href="https://huggingface.co/Comfy-Org/flux2-dev">Comfy-Org/flux2-dev files</a>
+- <a href="https://github.com/Comfy-Org/ComfyUI/issues/11864">NVFP4 on RTX 5090 needs CUDA 13</a>

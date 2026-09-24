@@ -2,7 +2,8 @@
 title: "Run MiniMax H3 locally on an RTX 5090 or RTX PRO 6000"
 description: "Pick your GPU, download the right files, run it in ComfyUI — plus a ready workflow that takes reference images, a video and your own LoRAs."
 date: 2026-09-24
-tags: ["AI Infra", "MiniMax H3", "ComfyUI", "Local models"]
+tags: ["Video models", "MiniMax H3", "ComfyUI", "Local models"]
+accent: "#6fa8ff"
 ---
 
 MiniMax H3 generates video **with native stereo audio** from text, keyframes or references. Here's the shortest path to running it in ComfyUI on one card.
@@ -44,7 +45,7 @@ Want more headroom? Swap in the unpruned INT8 generator (34.0 GB).
 </Tabs>
 
 <Note>
-Both cards are Blackwell, which the NVFP4 encoder needs. All files are from <a href="https://huggingface.co/Comfy-Org/MiniMax-H3">Comfy-Org/MiniMax-H3</a>.
+Both cards are Blackwell, which the NVFP4 encoder needs — and it only runs at full speed on the CUDA 13 (`cu130`) PyTorch installed below. All files are from <a href="https://huggingface.co/Comfy-Org/MiniMax-H3">Comfy-Org/MiniMax-H3</a>.
 </Note>
 
 ## Install ComfyUI
@@ -53,7 +54,7 @@ Both cards are Blackwell, which the NVFP4 encoder needs. All files are from <a h
 git clone https://github.com/comfyanonymous/ComfyUI.git
 cd ComfyUI
 python3 -m venv .venv && source .venv/bin/activate
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
 pip install -r requirements.txt "huggingface_hub[cli]"
 ```
 

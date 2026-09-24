@@ -1,0 +1,149 @@
+---
+title: "Run Qwen-Image 2.1 locally on an RTX 5090 or RTX PRO 6000"
+description: "The new 7B Qwen-Image: native 2K, transparent PNGs and reference editing in one checkpoint. Pick your GPU, download, run it in ComfyUI."
+date: 2026-09-23
+tags: ["Image models", "Qwen-Image", "ComfyUI", "Local models"]
+accent: "#8fdcc0"
+---
+
+Qwen-Image 2.1 is much smaller than the 20B original, and better at the things that matter — clean small text, native 2K and real alpha channels. One checkpoint does text-to-image and editing. Both cards run it at full precision.
+
+<Specs items={[
+  ["Generator", "7B · single-stream DiT"],
+  ["Text encoder", "Qwen3-VL 8B"],
+  ["Output", "native 2K · RGBA"],
+  ["Licence", "Qwen research licence"],
+]} />
+
+## Pick your GPU
+
+Choose once — every block below follows your pick.
+
+<Tabs group="gpu" labels={["RTX 5090 · 32 GB", "RTX PRO 6000 · 96 GB"]}>
+<Tab>
+
+**BF16 generator + INT8 encoder.** ≈ 24 GB, so everything stays loaded with room left for 2K images.
+
+| File | Size |
+| --- | --- |
+| Generator · BF16 | 14.2 GB |
+| Text encoder · INT8 | 9.35 GB |
+
+</Tab>
+<Tab>
+
+**Everything in BF16**, plus the optional prompt enhancers. ≈ 51 GB, all resident.
+
+| File | Size |
+| --- | --- |
+| Generator · BF16 | 14.2 GB |
+| Text encoder · BF16 | 17.5 GB |
+| Prompt enhancers · INT8 ×2 | 18.9 GB |
+
+</Tab>
+</Tabs>
+
+<Note>
+Needs ComfyUI 0.37 or newer. Already installed? Run `git pull && pip install -r requirements.txt` in your ComfyUI folder.
+</Note>
+
+## Install ComfyUI
+
+```bash title="install.sh"
+git clone https://github.com/comfyanonymous/ComfyUI.git
+cd ComfyUI
+python3 -m venv .venv && source .venv/bin/activate
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
+pip install -r requirements.txt "huggingface_hub[cli]"
+```
+
+## Download the models
+
+Run from the `ComfyUI` folder. The repo mirrors ComfyUI's layout, so files land straight in `models/`.
+
+<Tabs group="gpu" labels={["RTX 5090 · 32 GB", "RTX PRO 6000 · 96 GB"]}>
+<Tab>
+
+```bash title="download-5090.sh  ·  ≈ 24 GB"
+hf download Comfy-Org/Qwen-Image-2.1 \
+  diffusion_models/qwen_image_2.1_bf16.safetensors \
+  text_encoders/qwen3vl_8b_int8_convrot.safetensors \
+  vae/qwen_image_2.1_vae_bf16.safetensors \
+  --local-dir models
+```
+
+</Tab>
+<Tab>
+
+```bash title="download-pro6000.sh  ·  ≈ 51 GB"
+hf download Comfy-Org/Qwen-Image-2.1 \
+  diffusion_models/qwen_image_2.1_bf16.safetensors \
+  text_encoders/qwen3vl_8b_bf16.safetensors \
+  text_encoders/qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors \
+  text_encoders/qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors \
+  vae/qwen_image_2.1_vae_bf16.safetensors \
+  --local-dir models
+```
+
+</Tab>
+</Tabs>
+
+## Launch
+
+<Tabs group="gpu" labels={["RTX 5090 · 32 GB", "RTX PRO 6000 · 96 GB"]}>
+<Tab>
+
+```bash title="run-5090.sh"
+python main.py
+```
+
+</Tab>
+<Tab>
+
+```bash title="run-pro6000.sh"
+python main.py --highvram
+```
+
+</Tab>
+</Tabs>
+
+Open `http://127.0.0.1:8188`.
+
+## Generate
+
+Workflow → Browse Templates → Image. There are three official templates:
+
+- **Qwen Image 2.1: Text to Image** — start here.
+- **Qwen Image 2.1: Image Edit** — change a photo using two reference images.
+- **Remove Background: Qwen Image 2.1** — cut-outs with real transparency.
+
+The templates ship with the INT8 files. Set **Load Diffusion Model** to `qwen_image_2.1_bf16`, and on the PRO 6000 set **Load CLIP** to `qwen3vl_8b_bf16`.
+
+Defaults are 25 steps, CFG 1, euler / simple. To get native 2K, set *Resolution Selector* to 4.0 MP (2048 × 2048).
+
+**Editing:** name each image by its tag, `<image1>` then `<image2>`, in the order they're connected. The output takes the first image's aspect ratio.
+
+```text title="prompt"
+Keep the person in <image1> exactly — face, pose, lighting.
+Replace the shirt with the denim shirt from <image2>.
+Leave the background untouched.
+```
+
+<Tip>
+Qwen-Image is at its best with text, so quote the exact words you want on the image: a poster headline, a label, a UI string. For a sticker or logo, ask for a transparent background and keep the PNG.
+</Tip>
+
+## My results
+
+Same prompt and seed on both cards — filling this in as I test.
+
+| Card | Build | 1 MP · 25 steps | 2K · 25 steps | Peak VRAM |
+| --- | --- | --- | --- | --- |
+| RTX 5090 | BF16 + INT8 encoder | — | — | — |
+| RTX PRO 6000 | All BF16 | — | — | — |
+
+## Sources
+
+- <a href="https://docs.comfy.org/tutorials/image/qwen/qwen-image-2-1">ComfyUI · Qwen-Image 2.1 native workflows</a>
+- <a href="https://blog.comfy.org/p/qwen-image-21-in-comfyui-open-weight">Comfy blog · Qwen-Image 2.1 in ComfyUI</a>
+- <a href="https://huggingface.co/Comfy-Org/Qwen-Image-2.1">Comfy-Org/Qwen-Image-2.1 files</a>

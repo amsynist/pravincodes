@@ -22,7 +22,6 @@
     radial-gradient(1100px 620px at 12% -8%, rgba(53, 129, 226, 0.14), transparent 62%),
     radial-gradient(800px 520px at 100% 0%, rgba(111, 168, 255, 0.06), transparent 60%),
     var(--ink-0);
-  background-attachment: fixed;
 }
 
 /* ---------------------------------------------------------------- nav */
@@ -83,32 +82,136 @@
 .notes-hero__title span { color: var(--signal-hi); -webkit-text-fill-color: var(--signal-hi); }
 .notes-hero__lede { margin-top: 26px; max-width: 58ch; font-size: clamp(16px, 1.4vw, 19px); line-height: 1.6; color: var(--text); }
 
-.post-list { margin-top: clamp(48px, 7vw, 88px); border-top: 1px solid var(--rule); }
-.post-row {
+/* the deck — one card per note, each in its own colour and motif */
+.deck {
   display: grid;
-  grid-template-columns: clamp(64px, 9vw, 120px) 1fr auto;
-  align-items: start;
-  gap: clamp(14px, 3vw, 40px);
-  padding: clamp(24px, 3.4vw, 40px) 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(14px, 1.8vw, 22px);
+  margin-top: clamp(44px, 6vw, 80px);
+}
+.deck__lead { grid-column: 1 / -1; }
+.pcard {
+  --acc: var(--signal-hi);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid var(--rule);
+  background:
+    radial-gradient(120% 80% at 100% 0%, color-mix(in oklab, var(--acc) 13%, transparent), transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0.008));
+  transition: transform 0.5s var(--ease-film), border-color 0.35s, box-shadow 0.5s;
+  isolation: isolate;
+}
+a.pcard:hover, a.pcard:focus-visible {
+  transform: translateY(-4px);
+  border-color: color-mix(in oklab, var(--acc) 55%, transparent);
+  box-shadow: 0 24px 60px -30px color-mix(in oklab, var(--acc) 70%, transparent), 0 0 0 1px color-mix(in oklab, var(--acc) 18%, transparent) inset;
+}
+a.pcard:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; }
+
+.pcard__art {
+  position: relative;
+  aspect-ratio: 16 / 8;
+  overflow: hidden;
   border-bottom: 1px solid var(--rule);
-  transition: background 0.35s;
+  background: radial-gradient(90% 90% at 30% 60%, color-mix(in oklab, var(--acc) 10%, transparent), transparent 70%), var(--ink-1);
 }
-.post-row__n {
-  font-family: var(--font-dot-stack);
-  font-weight: 700;
-  font-size: clamp(26px, 3.4vw, 44px);
-  line-height: 1;
-  color: rgba(255, 255, 255, 0.18);
-  transition: color 0.35s;
+.pcard__art::after { /* soft fade into the body */
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 40%;
+  background: linear-gradient(0deg, rgba(5, 6, 11, 0.55), transparent);
+  pointer-events: none;
 }
-.post-row__main { display: grid; gap: 10px; }
-.post-row__title { font-family: var(--font-head-stack); font-weight: 600; font-size: clamp(22px, 2.6vw, 34px); line-height: 1.12; letter-spacing: -0.01em; color: #fff; }
-.post-row__desc { max-width: 70ch; color: var(--text); font-size: 15.5px; line-height: 1.6; }
-.post-row__meta { font-family: var(--font-mono-stack); font-size: 12px; letter-spacing: 0.04em; color: var(--text-dim); }
-.post-row__arr { margin-top: 6px; color: var(--text-dim); transition: transform 0.45s var(--ease-film), color 0.3s; }
-.post-row:hover .post-row__n { color: var(--signal-hi); }
-.post-row:hover .post-row__arr { transform: translate(4px, -4px); color: var(--signal-hi); }
-.post-row:hover { background: linear-gradient(90deg, rgba(111, 168, 255, 0.05), transparent 70%); }
+.pcard__num { color: color-mix(in oklab, var(--acc) 70%, #fff); }
+
+.pcard__body { display: flex; flex: 1; flex-direction: column; gap: 12px; padding: clamp(20px, 2.4vw, 28px); }
+.pcard__kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono-stack);
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--acc) 75%, #fff);
+}
+.pcard__new, .pcard__drafting {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: #fff;
+  background: color-mix(in oklab, var(--acc) 22%, transparent);
+  border: 1px solid color-mix(in oklab, var(--acc) 45%, transparent);
+}
+.pcard__drafting { color: var(--text); background: transparent; border-style: dashed; border-color: var(--rule-2); }
+.pcard__drafting::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ember);
+}
+.pcard__title {
+  font-family: var(--font-head-stack);
+  font-weight: 600;
+  font-size: clamp(21px, 2vw, 27px);
+  line-height: 1.16;
+  letter-spacing: -0.01em;
+  color: #fff;
+  text-wrap: balance;
+}
+.pcard__desc { color: var(--text); font-size: 15px; line-height: 1.6; text-wrap: pretty; }
+.pcard__foot {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--font-mono-stack);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+.pcard__arr { margin-left: auto; color: var(--text-dim); transition: transform 0.45s var(--ease-film), color 0.3s; }
+a.pcard:hover .pcard__arr { transform: translate(3px, -3px); color: var(--acc); }
+
+/* the newest note gets the full row: art on the left, words on the right */
+@media (min-width: 820px) {
+  .pcard--lead { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+  .pcard--lead .pcard__art { aspect-ratio: auto; min-height: 320px; border-bottom: 0; border-right: 1px solid var(--rule); }
+  .pcard--lead .pcard__body { justify-content: center; padding: clamp(28px, 3.4vw, 48px); }
+  .pcard--lead .pcard__title { font-size: clamp(28px, 3vw, 40px); line-height: 1.06; }
+  .pcard--lead .pcard__desc { font-size: 16.5px; }
+}
+@media (max-width: 719px) { .deck { grid-template-columns: 1fr; } }
+
+/* in the works */
+.soon { margin-top: clamp(56px, 7vw, 96px); }
+.soon__h { display: flex; align-items: center; gap: 16px; }
+.soon__h::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+.soon__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(14px, 1.8vw, 22px); margin-top: 22px; }
+@media (max-width: 719px) { .soon__grid { grid-template-columns: 1fr; } }
+.pcard--soon { border-style: dashed; border-color: var(--rule-2); background: rgba(255, 255, 255, 0.012); }
+.pcard--soon .pcard__art { aspect-ratio: 16 / 5; }
+.pcard--soon .pcard__title { color: rgba(255, 255, 255, 0.82); font-size: clamp(19px, 1.7vw, 23px); }
+.pcard--soon .pcard__desc { color: var(--text-dim); font-size: 14.5px; }
+.pcard--soon .pcard__kicker { color: var(--text-dim); }
+
+/* ---------------------------------------------------------- card cover */
+.pcover { object-fit: cover; object-position: 50% 50%; transition: transform 0.7s var(--ease-film); }
+a.pcard:hover .pcover { transform: scale(1.035); }
+.pcard--soon .pcover { opacity: 0.8; }
 .post-empty { padding: 40px 0; color: var(--text-dim); }
 
 /* ------------------------------------------------------------ article */
@@ -125,12 +228,50 @@
   transform-origin: 0 50%;
 }
 
+/* article header: the cover, blurred, behind; the sharp cover as a plate on the right */
+.note-hero { position: relative; isolation: isolate; overflow: hidden; }
+.note-hero__bg {
+  position: absolute;
+  inset: -6% -4%;
+  z-index: -1;
+  background-size: cover;
+  background-position: 70% 50%;
+  opacity: 0.9;
+}
+.note-hero::after { /* fade the colour into the page, keep the left side calm for the title */
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, rgba(5, 6, 11, 0.82) 0%, rgba(5, 6, 11, 0.45) 48%, rgba(5, 6, 11, 0.1) 100%),
+    linear-gradient(180deg, rgba(5, 6, 11, 0.3) 0%, transparent 28%, rgba(5, 6, 11, 0.55) 78%, var(--ink-0) 100%);
+}
 .note-head {
   position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
   max-width: 1180px;
   margin: 0 auto;
-  padding: clamp(40px, 7vw, 96px) var(--pad) clamp(36px, 5vw, 64px);
+  padding: clamp(28px, 6vw, 88px) var(--pad) clamp(36px, 5vw, 64px);
+}
+.note-head > * { min-width: 0; }
+.note-head .note-back { justify-self: start; }
+.note-plate {
+  position: relative;
+  order: -1;
+  aspect-ratio: 16 / 9;
+  margin: 0 0 26px;
   overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.8), 0 0 0 1px color-mix(in oklab, var(--acc, #6fa8ff) 18%, transparent);
+}
+@media (min-width: 1000px) {
+  .note-head { grid-template-columns: minmax(0, 1fr) minmax(320px, 40%); column-gap: clamp(40px, 5vw, 72px); }
+  .note-head > * { grid-column: 1; }
+  .note-plate { order: 0; grid-column: 2; grid-row: 1 / span 6; align-self: center; margin: 0; }
 }
 .note-back { display: inline-flex; align-items: center; gap: 8px; margin-bottom: clamp(28px, 4vw, 48px); font-size: 14px; color: var(--text-dim); transition: color 0.25s, gap 0.3s var(--ease-film); }
 .note-back:hover { color: #fff; gap: 12px; }
@@ -150,19 +291,6 @@
 .note-lede { position: relative; z-index: 1; margin-top: 22px; max-width: 62ch; font-size: clamp(17px, 1.5vw, 20px); line-height: 1.6; color: var(--text); text-wrap: pretty; }
 .note-meta { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 28px; font-family: var(--font-mono-stack); font-size: 12.5px; letter-spacing: 0.04em; color: var(--text-dim); }
 .note-tag { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--rule-2); color: var(--text); }
-.note-head__num {
-  position: absolute;
-  right: calc(var(--pad) - 0.06em);
-  bottom: -0.16em;
-  font-family: var(--font-wordmark-stack);
-  font-variation-settings: "wdth" 140, "wght" 800;
-  font-size: clamp(120px, 22vw, 320px);
-  line-height: 1;
-  color: transparent;
-  -webkit-text-stroke: 1px rgba(111, 168, 255, 0.14);
-  pointer-events: none;
-  user-select: none;
-}
 
 .note-grid {
   max-width: 1180px;
@@ -456,3 +584,6 @@
   .post-row { grid-template-columns: 1fr auto; }
   .post-row__n { grid-column: 1 / -1; font-size: 22px; }
 }
+
+/* each note carries its card colour into its header */
+.note .note-head .dotlabel { color: color-mix(in oklab, var(--acc, var(--signal-hi)) 85%, #fff); }

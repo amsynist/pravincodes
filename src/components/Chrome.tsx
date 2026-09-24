@@ -20,11 +20,21 @@ import { Wordmark3D } from "./Chapters";
 function NotesLink() {
   return (
     <Link href="/blog" className="btn notes-btn !h-12 md:!h-14 !px-5 md:!px-6" aria-label="Notes — blog">
+      {/* a pen that signs a little scribble, dots it, lifts and glides back */}
       <svg className="notes-ico" viewBox="0 0 24 24" width="22" height="22" aria-hidden>
-        <path className="nl nl1" d="M4.5 6.5h15" pathLength={1} />
-        <path className="nl nl2" d="M4.5 12h11" pathLength={1} />
-        <path className="nl nl3" d="M4.5 17.5h8" pathLength={1} />
-        <circle className="nc" cx="12.5" cy="17.5" r="1.5" />
+        <g transform="translate(0 -2.4)">
+          <path
+            className="np-ink"
+            pathLength={1}
+            d="M3.00 19.20C3.12 19.02 3.48 18.36 3.72 18.10C3.96 17.85 4.20 17.65 4.44 17.65C4.68 17.65 4.92 17.85 5.16 18.10C5.40 18.36 5.64 18.83 5.88 19.20C6.11 19.57 6.35 20.04 6.59 20.30C6.83 20.55 7.07 20.75 7.31 20.75C7.55 20.75 7.79 20.55 8.03 20.30C8.27 20.04 8.51 19.57 8.75 19.20C8.99 18.83 9.23 18.36 9.47 18.10C9.71 17.85 9.95 17.65 10.19 17.65C10.43 17.65 10.67 17.85 10.91 18.10C11.15 18.36 11.39 18.83 11.62 19.20C11.86 19.57 12.10 20.04 12.34 20.30C12.58 20.55 12.82 20.75 13.06 20.75C13.30 20.75 13.54 20.55 13.78 20.30C14.02 20.04 14.38 19.38 14.50 19.20"
+          />
+          <circle className="np-dot" cx="17.2" cy="19.2" r="0.95" />
+          <g className="np-pen">
+            <path className="np-body" d="M1.05 -3.05L8.7 -10.7a1.45 1.45 0 0 1 2.05 2.05L3.05 -1.05" />
+            <path className="np-cap" d="M7.2 -9.2l2 2" />
+            <path className="np-nib" d="M0 0L1.05 -3.05L3.05 -1.05Z" />
+          </g>
+        </g>
       </svg>
       <span className="notes-btn__label">Notes</span>
     </Link>
